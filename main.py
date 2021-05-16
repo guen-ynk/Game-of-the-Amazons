@@ -32,9 +32,9 @@ class Amazons:
     def game(self):
         ongoing: bool = True
         while ongoing:
-            for x in self.player:
+            for n, x in enumerate(self.player):
                 if self.board.iswon():
-                    print("No Moves possible", x, "lost")
+                    print("No Moves possible", "black" if n else "white", "lost")
                     ongoing = False
                     break
                 (s, d, a) = player(board=self.board) if not x else AI(board=self.board, mode=x)
@@ -110,9 +110,6 @@ class Board:
     def evaluate(self):
         self.WTurn = not self.WTurn
 
-    def loop(self):
-        print(self.board)
-
     def __str__(self):
         return "{0}\n{1}".format(("   " + "  ".join([chr(ord("a") + y) for y in range(self.size)])), "\n".join(
             [(str(x + 1) + ("  " if x < 9 else " ")) + "  ".join(map(lambda x: CHARS[x], self.board[x])) for x in
@@ -163,7 +160,7 @@ if __name__ == '__main__':
         [-1, -1, -1, -1, -1, -1, 2, -1, -1, -1],
         [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
         [-1, -1, -1, 1, -1, -1, -1, -1, -1, -1],
-        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+        [-1, -1, -1, -1, -1, -1, 0, -1, -1, -1],
         [-1, -1, -1, -1, -1, -1, 2, -1, -1, -1],
         [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
     ])
