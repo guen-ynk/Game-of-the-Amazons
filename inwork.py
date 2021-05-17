@@ -1,5 +1,8 @@
-import numpy as np
 import copy
+import random
+
+import numpy as np
+
 size = 10
 board = np.zeros((size, size), dtype=int)
 ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
@@ -10,6 +13,7 @@ board[(2, 2)] = 1
 board[(3, 3)] = 2
 
 print(board)
+
 
 # fuer #moves heuristik
 
@@ -46,17 +50,33 @@ def get_moves(board, s):
             ops = ops * i
 
         maph[(qmove[0], qmove[1])] = copy.copy(amoves)
+    return maph
+
+
+
+if __name__ == '__main__':
+    maph = get_moves(board, s)
     movecount = 0
     for k in maph.keys():
         tboard = copy.copy(board)
         print(k, maph[k], len(maph[k]))
-        movecount+=len(maph[k])
+        movecount += len(maph[k])
         # fuer visualisierung später
-        tmp = np.array(maph[k])-1
+        tmp = np.array(maph[k]) - 1
         tboard[tuple(zip(*tmp))] = 9
         print(tboard)
     print(movecount)
-get_moves(board, s)
+
+    # get random move:
+    rndq = random.choice(list(maph.keys()))
+    rana = tuple(np.array(random.choice(maph[rndq]))-1)
+    rndq = tuple(np.array(rndq)-1)
+    
+    tboard = copy.copy(board)
+    tboard[rndq] = 5
+    tboard[rana] = -1
+    print(rndq, rana)
+    print(tboard)
 '''
 Fragen:
     MCTS: ebenen-> rollout definition und strategy
