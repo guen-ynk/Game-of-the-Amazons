@@ -71,7 +71,7 @@ if __name__ == '__main__':
     rndq = random.choice(list(maph.keys()))
     rana = tuple(np.array(random.choice(maph[rndq]))-1)
     rndq = tuple(np.array(rndq)-1)
-    
+
     tboard = copy.copy(board)
     tboard[rndq] = 5
     tboard[rana] = -1

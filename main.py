@@ -122,7 +122,7 @@ def alphabet2num(pos_raw) -> tuple:
 
 def player(board):
     while True:
-        (s, d) = map(alphabet2num, input("amazonmove please: e.g. a8-a4: ").split("-"))
+        (s, d) = map(alphabet2num, input(("white" if board.WTurn else "black") + " amazonmove please: e.g. a8-a4: ").split("-"))
         if board.try_move((s, d)):
             board.move(s, d)
             break
