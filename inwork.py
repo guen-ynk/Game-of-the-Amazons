@@ -1,18 +1,9 @@
 import copy
-import random
 
 import numpy as np
 
-size = 10
-board = np.zeros((size, size), dtype=int)
 ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
 
-s = np.array([2, 2]) + 1
-board[(1, 1)] = -1
-board[(2, 2)] = 1
-board[(3, 3)] = 2
-
-print(board)
 
 
 # fuer #moves heuristik
@@ -27,56 +18,59 @@ def get_moves(board, s):
     while len(ops > 0):
         sused = (s + ops)
         calcmoves = boardx[tuple(zip(*sused))]
+        print(calcmoves, s)
         ops = (ops[calcmoves == 0] / i).astype(int)
         for y in sused[calcmoves == 0]:
             moves.append(y)
         i += 1
         ops = ops * i
-
+    print(moves)
     print(len(moves))
     maph = {}
     for qmove in moves:
         i = 1
         amoves = []
         ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
-
+        boardx[tuple(qmove)] = boardx[tuple(s)]
+        boardx[tuple(s)] = 0
         while len(ops > 0):
             sused = (qmove + ops)
             calcmoves = boardx[tuple(zip(*sused))]
+            print(calcmoves)
             ops = (ops[calcmoves == 0] / i).astype(int)
             for y in sused[calcmoves == 0]:
                 amoves.append(y)
             i += 1
             ops = ops * i
-
+        print(boardx)
+        boardx[tuple(s)] = boardx[tuple(qmove)]
+        boardx[tuple(qmove)] = 0
+        print(amoves)
         maph[(qmove[0], qmove[1])] = copy.copy(amoves)
+        print(maph)
     return maph
 
 
-
 if __name__ == '__main__':
-    maph = get_moves(board, s)
-    movecount = 0
-    for k in maph.keys():
-        tboard = copy.copy(board)
-        print(k, maph[k], len(maph[k]))
-        movecount += len(maph[k])
-        # fuer visualisierung später
-        tmp = np.array(maph[k]) - 1
-        tboard[tuple(zip(*tmp))] = 9
-        print(tboard)
-    print(movecount)
+    board = np.array(
+        [[0, - 1, 0, - 1, 2, 0],
+         [-1, - 1, - 1, - 1, - 1, - 1],
+         [-1, - 1, - 1, 1, 0, - 1],
+         [2, - 1, - 1, 0, 0, 0],
+         [-1, - 1, 0, 0, 0, 0],
+         [-1, 0, 0, 0, 0, 1]]
+    )
+    indx = np.where(board == 2)  # get amazon indicies
+    amazons = np.array(list(np.array([a, b]) for (a, b) in zip(*indx))) + 1  # tuple list to listlist
+    movs = []
+    for s in amazons:
+        maph = get_moves(board, s)
 
-    # get random move:
-    rndq = random.choice(list(maph.keys()))
-    rana = tuple(np.array(random.choice(maph[rndq]))-1)
-    rndq = tuple(np.array(rndq)-1)
+        for key in maph.keys():
+            for arrow in maph[key]:
+                movs.append((key, arrow))
+    print(movs)
 
-    tboard = copy.copy(board)
-    tboard[rndq] = 5
-    tboard[rana] = -1
-    print(rndq, rana)
-    print(tboard)
 '''
 Fragen:
     MCTS: ebenen-> rollout definition und strategy
