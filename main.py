@@ -1,4 +1,5 @@
 import copy as cp
+
 import numpy as np
 
 # codes
@@ -55,6 +56,7 @@ class Board:
         self.board[tuple(zip(*white_init))] = NWHITEQ  # fill in Amazons
         self.board[tuple(zip(*black_init))] = NBLACKQ
         self.ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
+        self.wboard, self.bboard = None, None
 
     def try_move(self, input_tup: tuple):
 
@@ -123,30 +125,6 @@ class Board:
             i += 1
             ops = ops * i
 
-    def get_moves(self, s):
-        boardx = np.pad(self.board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
-
-        maph = {}
-        for qmove in self.get_moves_q(s):
-            i = 1
-            amoves = []
-            ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
-            boardx[tuple(qmove)] = boardx[tuple(s)]
-            boardx[tuple(s)] = NEMPTY
-            while len(ops > 0):
-                sused = (qmove + ops)
-                calcmoves = boardx[tuple(zip(*sused))]
-                ops = (ops[calcmoves == 0] / i).astype(int)
-                for y in sused[calcmoves == 0]:
-                    amoves.append(y)
-                i += 1
-                ops = ops * i
-            boardx[tuple(s)] = boardx[tuple(qmove)]
-            boardx[tuple(qmove)] = NEMPTY
-
-            maph[(qmove[0], qmove[1])] = cp.copy(amoves)
-        return maph
-
     def get_possible_moves(self):
         indx = np.where(self.board == NWHITEQ) if self.WTurn else np.where(self.board == NBLACKQ)  # get amazon indicies
         amazons = np.array(list(np.array([a, b]) for (a, b) in zip(*indx))) + 1  # tuple list to listlist
@@ -167,17 +145,6 @@ class Board:
                     ops = ops * i
                 boardx[tuple(s)] = boardx[tuple(qmove)]
                 boardx[tuple(qmove)] = NEMPTY
-
-    def moves_heuristic(self):
-        indx = np.where(self.board == NWHITEQ) if self.WTurn else np.where(self.board == NBLACKQ)  # get amazon indicies
-        amazons = np.array(list(np.array([a, b]) for (a, b) in zip(*indx))) + 1  # tuple list to listlist
-        movs = []
-        for amazon in amazons:
-            maph = self.get_moves(amazon)
-            for key in maph.keys():
-                for arrow in maph[key]:
-                    movs.append((amazon, key, arrow))
-        return movs
 
     def evaluate(self):
         self.WTurn = not self.WTurn
@@ -232,20 +199,135 @@ def player(board):
 
 class Heuristics:
     @staticmethod
-    def evaluate(board):
-        return len(board.moves_heuristic())
+    def getMovesInRadius(board, check, s, depth, color):
+        ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
+        boardx = np.pad(board.board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
+        boardh = board.wboard if color else board.bboard
+        i = 1
+        while len(ops > 0):
+            one_step_each_dir = (s + ops)  # go 1 step in each direction
+            fields = boardx[tuple(zip(*one_step_each_dir))]  # get the value of those fields
+            ops = (ops[fields == 0] / i).astype(int)  # only keep the free directions, normalize ops and keep the type
+            for y in one_step_each_dir[fields == 0]:
+                if not check[tuple(y - 1)]:
+                    boardh[tuple(y - 1)] = min(
+                        boardh[tuple(y - 1)],
+                        depth
+                    )
+                    check[tuple(y - 1)] = 1
+                    yield y
+            i += 1
+            ops = ops * i  # jump to nth step
+
+    @staticmethod
+    def amazonBFS(board, s, color):
+        moves = [s]
+        checkboard = np.zeros_like(board.board)
+        for x in range(1, board.size * board.size):
+            movesnn = []
+            for m in moves:
+                for r in Heuristics.getMovesInRadius(board, checkboard, m, x, color):
+                    movesnn.append(r)
+            moves = movesnn
+            if not moves:
+                break
+
+    @staticmethod
+    def territorial_eval_heurisic(board: Board):
+
+        board.wboard = np.full_like(board.board, fill_value=999)
+        board.bboard = np.full_like(board.board, fill_value=999)
+        for x in [True, False]:
+            indx = np.where(board.board == 1) if x else np.where(board.board == 2)  # get amazon indicies
+            amazons = np.array(list(np.array([a, b]) for (a, b) in zip(*indx))) + 1  # tuple list to listlist
+            for a in amazons:
+                Heuristics.amazonBFS(board, a, x)
+        diff = np.subtract(board.wboard, board.bboard) if board.WTurn else np.subtract(board.bboard, board.wboard)
+        sum = np.sum(diff)
+        for i in range(board.size):
+            for j in range(board.size):
+                if board.WTurn:
+                    if board.wboard[i][j] == 999 and board.bboard[i][j] == 999:
+                        board.wboard[i][j] = 0
+                    elif board.wboard[i][j] == board.bboard[i][j]:
+                        board.wboard[i][j] = 1 / 5
+                    elif board.wboard[i][j] > board.bboard[i][j]:
+                        board.wboard[i][j] = 1
+                    else:
+                        board.wboard[i][j] = -1
+                    return np.sum(board.wboard)
+                else:
+                    if board.wboard[i][j] == 999 and board.bboard[i][j] == 999:
+                        board.bboard[i][j] = 0
+                    elif board.wboard[i][j] == board.bboard[i][j]:
+                        board.bboard[i][j] = 1 / 5
+                    elif board.wboard[i][j] > board.bboard[i][j]:
+                        board.bboard[i][j] = -1
+                    else:
+                        board.bboard[i][j] = 1
+                    return np.sum(board.bboard)
+
+    @staticmethod
+    def get_moves(board, s):
+        boardx = np.pad(board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
+
+        maph = {}
+        for qmove in board.get_moves_q(s):
+            i = 1
+            amoves = []
+            ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
+            boardx[tuple(qmove)] = boardx[tuple(s)]
+            boardx[tuple(s)] = NEMPTY
+            while len(ops > 0):
+                sused = (qmove + ops)
+                calcmoves = boardx[tuple(zip(*sused))]
+                ops = (ops[calcmoves == 0] / i).astype(int)
+                for y in sused[calcmoves == 0]:
+                    amoves.append(y)
+                i += 1
+                ops = ops * i
+            boardx[tuple(s)] = boardx[tuple(qmove)]
+            boardx[tuple(qmove)] = NEMPTY
+
+            maph[(qmove[0], qmove[1])] = cp.copy(amoves)
+        return maph
+
+    @staticmethod
+    def moves_heuristic(board) -> int:
+        indx = np.where(board == NWHITEQ) if board.WTurn else np.where(board == NBLACKQ)  # get amazon indicies
+        amazons = np.array(list(np.array([a, b]) for (a, b) in zip(*indx))) + 1  # tuple list to listlist
+        i = 0
+        for amazon in amazons:
+            maph = Heuristics.get_moves(board, amazon)
+            for key in maph.keys():
+                i += len(maph[key])
+        return i
+
+    @staticmethod
+    def evaluate(board: Board, mode):
+        if mode == 1:
+            return Heuristics.moves_heuristic(board)
+        if mode == 2:
+            x = Heuristics.territorial_eval_heurisic(board)
+            return x
 
 
 class AI:
     INFINITE = 10000000
 
     @staticmethod
-    def get_ai_move(board: Board):  # 1 white 2 black
+    def get_ai_move(board: Board, mode):  # 1 white 2 black
         best_move = 0
         best_score = AI.INFINITE
         for move in board.get_possible_moves():
             board.perform_move(move)
-            score = AI.alphabeta(board, 2 if np.count_nonzero(board==0) > 20 else 3, -AI.INFINITE, AI.INFINITE, True)  # set 2 and higer depending on movs length
+            state = len(np.where(board.board == 0)[0])
+            if state > 50:
+                depth = 2
+            else:
+                depth = 10
+            score = AI.alphabeta(board, depth, -AI.INFINITE, AI.INFINITE,
+                                 True, mode)  # set 2 and higer depending on movs length
             board.del_move(move)
 
             if score < best_score:
@@ -259,15 +341,15 @@ class AI:
         return best_move
 
     @staticmethod
-    def alphabeta(board, depth, a, b, maximizing):
+    def alphabeta(board: Board, depth, a, b, maximizing, mode):
         if depth == 0 or board.iswon():
-            return Heuristics.evaluate(board)
+            return Heuristics.evaluate(board, mode)
 
         if maximizing:
             best_score = -AI.INFINITE
             for move in board.get_possible_moves():
                 board.perform_move(move)
-                best_score = max(best_score, AI.alphabeta(board, depth - 1, a, b, False))
+                best_score = max(best_score, AI.alphabeta(board, depth - 1, a, b, False, mode))
                 board.del_move(move)
 
                 a = max(a, best_score)
@@ -278,7 +360,7 @@ class AI:
             best_score = AI.INFINITE
             for move in board.get_possible_moves():
                 board.perform_move(move)
-                best_score = min(best_score, AI.alphabeta(board, depth - 1, a, b, True))
+                best_score = min(best_score, AI.alphabeta(board, depth - 1, a, b, True, mode))
                 board.del_move(move)
 
                 b = min(b, best_score)
@@ -288,11 +370,9 @@ class AI:
 
 
 def ai(board: Board, mode):
-    tmp = AI.get_ai_move(cp.deepcopy(board))
+    tmp = AI.get_ai_move(cp.deepcopy(board), mode)
     if tmp:
         board.perform_move(tmp)
-    else:
-        exit(1)
     return tmp
 
 
