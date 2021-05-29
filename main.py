@@ -1,4 +1,5 @@
 import copy as cp
+import time
 
 import numpy as np
 
@@ -57,6 +58,7 @@ class Board:
         self.board[tuple(zip(*black_init))] = NBLACKQ
         self.ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
         self.wboard, self.bboard = None, None
+        self.tables = [{}, {}]
 
     def try_move(self, input_tup: tuple):
 
@@ -283,12 +285,12 @@ class Heuristics:
             i += 1
             ops = ops * i
 
+
     @staticmethod
     def get_moves(board: Board, s):
         boardx = np.pad(board.board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
         count = 0
-        generator = Heuristics.get_moves_q(board, s)
-        for qmove in generator:
+        for qmove in Heuristics.get_moves_q(board, s):
             i = 1
             ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
             boardx[tuple(qmove)] = boardx[tuple(s)]
@@ -332,6 +334,7 @@ class AI:
     def get_ai_move(board: Board, mode):  # 1 white 2 black
         best_move = 0
         best_score = AI.INFINITE
+        stamp = time.time()
 
         for move in board.get_possible_moves():
 
@@ -344,7 +347,8 @@ class AI:
             score = AI.alphabeta(board, depth, -AI.INFINITE, AI.INFINITE,
                                  True, mode)
             board.del_move(move)
-
+            print(time.time() - stamp)
+            stamp = time.time()
             if score < best_score:
                 best_score = score
                 best_move = move
@@ -358,13 +362,23 @@ class AI:
     @staticmethod
     def alphabeta(board: Board, depth, a, b, maximizing, mode):
         if depth == 0 or board.iswon():
-            return Heuristics.evaluate(board, mode)
+            ha = hash(board.board.tobytes())
+            if ha in board.tables[mode - 1].keys():
+                return board.tables[mode - 1][ha]
+            else:
+                heu = Heuristics.evaluate(board, mode)
+                board.tables[mode - 1][hash(board.board.tobytes())] = heu
+                board.tables[mode - 1][hash(np.fliplr(board.board).tobytes())] = heu
+                board.tables[mode - 1][hash(np.flipud(board.board).tobytes())] = heu
+
+            return heu
 
         if maximizing:
             best_score = -AI.INFINITE
             for move in board.get_possible_moves():
                 board.perform_move(move)
                 best_score = max(best_score, AI.alphabeta(board, depth - 1, a, b, False, mode))
+
                 board.del_move(move)
 
                 a = max(a, best_score)
