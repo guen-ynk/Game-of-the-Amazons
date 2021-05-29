@@ -116,7 +116,7 @@ class Board:
         ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
 
         i = 1
-        while len(ops > 0):
+        while len(ops) > 0:
             sused = (s + ops)
             calcmoves = boardx[tuple(zip(*sused))]
             ops = (ops[calcmoves == 0] / i).astype(int)
@@ -150,16 +150,18 @@ class Board:
         self.WTurn = not self.WTurn
 
     def perform_move(self, move):
-        self.move(tuple(move[0] - 1),
-                  tuple(np.array(move[1]) - 1))
-        self.shoot(tuple(np.array(move[2]) - 1))
-        self.evaluate()
+        white = True if self.board[tuple(np.array(move[0]) - 1)] == NWHITEQ else False
+        self.board[tuple(np.array(move[1]) - 1)] = NWHITEQ if white else NBLACKQ
+        self.board[tuple(np.array(move[0]) - 1)] = NEMPTY
+        self.board[tuple(np.array(move[2]) - 1)] = NARROW
+        self.WTurn = not white
 
     def del_move(self, move):
-        self.move(tuple(np.array(move[1]) - 1),
-                  tuple(move[0] - 1))
+        white = True if self.board[tuple(np.array(move[1]) - 1)] == NWHITEQ else False
         self.board[tuple(np.array(move[2]) - 1)] = NEMPTY
-        self.evaluate()
+        self.board[tuple(np.array(move[1]) - 1)] = NEMPTY
+        self.board[tuple(np.array(move[0]) - 1)] = NWHITEQ if white else NBLACKQ
+        self.WTurn = not white
 
     def __str__(self):
         return "{0}\n{1}".format(("   " + "  ".join([chr(ord("a") + y) for y in range(self.size)])), "\n".join(
@@ -242,8 +244,6 @@ class Heuristics:
             amazons = np.array(list(np.array([a, b]) for (a, b) in zip(*indx))) + 1  # tuple list to listlist
             for a in amazons:
                 Heuristics.amazonBFS(board, a, x)
-        diff = np.subtract(board.wboard, board.bboard) if board.WTurn else np.subtract(board.bboard, board.wboard)
-        sum = np.sum(diff)
         for i in range(board.size):
             for j in range(board.size):
                 if board.WTurn:
@@ -268,39 +268,52 @@ class Heuristics:
                     return np.sum(board.bboard)
 
     @staticmethod
-    def get_moves(board, s):
-        boardx = np.pad(board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
+    def get_moves_q(board, s):
+        boardx = np.pad(board.board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
+        ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
 
-        maph = {}
-        for qmove in board.get_moves_q(s):
+        i = 1
+        while len(ops) > 0:
+
+            sused = (s + ops)
+            calcmoves = boardx[tuple(zip(*sused))]
+            ops = (ops[calcmoves == 0] / i).astype(int)
+            for y in sused[calcmoves == 0]:
+                yield y
+            i += 1
+            ops = ops * i
+
+    @staticmethod
+    def get_moves(board: Board, s):
+        boardx = np.pad(board.board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
+        count = 0
+        generator = Heuristics.get_moves_q(board, s)
+        for qmove in generator:
             i = 1
-            amoves = []
             ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
             boardx[tuple(qmove)] = boardx[tuple(s)]
             boardx[tuple(s)] = NEMPTY
-            while len(ops > 0):
+            while len(ops) > 0:
                 sused = (qmove + ops)
                 calcmoves = boardx[tuple(zip(*sused))]
                 ops = (ops[calcmoves == 0] / i).astype(int)
-                for y in sused[calcmoves == 0]:
-                    amoves.append(y)
+                count += len(sused[calcmoves == 0])
                 i += 1
                 ops = ops * i
             boardx[tuple(s)] = boardx[tuple(qmove)]
             boardx[tuple(qmove)] = NEMPTY
 
-            maph[(qmove[0], qmove[1])] = cp.copy(amoves)
-        return maph
+        return count
 
     @staticmethod
     def moves_heuristic(board) -> int:
-        indx = np.where(board == NWHITEQ) if board.WTurn else np.where(board == NBLACKQ)  # get amazon indicies
+        indx = np.where(board.board == NWHITEQ) if board.WTurn else np.where(
+            board.board == NBLACKQ)  # get amazon indicies
         amazons = np.array(list(np.array([a, b]) for (a, b) in zip(*indx))) + 1  # tuple list to listlist
         i = 0
         for amazon in amazons:
-            maph = Heuristics.get_moves(board, amazon)
-            for key in maph.keys():
-                i += len(maph[key])
+            i += Heuristics.get_moves(board, amazon)
+
         return i
 
     @staticmethod
@@ -319,15 +332,17 @@ class AI:
     def get_ai_move(board: Board, mode):  # 1 white 2 black
         best_move = 0
         best_score = AI.INFINITE
+
         for move in board.get_possible_moves():
+
             board.perform_move(move)
             state = len(np.where(board.board == 0)[0])
-            if state > 50:
+            if state > 15:
                 depth = 2
             else:
-                depth = 10
+                depth = 2
             score = AI.alphabeta(board, depth, -AI.INFINITE, AI.INFINITE,
-                                 True, mode)  # set 2 and higer depending on movs length
+                                 True, mode)
             board.del_move(move)
 
             if score < best_score:
@@ -358,6 +373,7 @@ class AI:
             return best_score
         else:
             best_score = AI.INFINITE
+
             for move in board.get_possible_moves():
                 board.perform_move(move)
                 best_score = min(best_score, AI.alphabeta(board, depth - 1, a, b, True, mode))
@@ -379,6 +395,5 @@ def ai(board: Board, mode):
 if __name__ == '__main__':
     game = Amazons("config6x6.txt")
     # example situation
-
     print(game.board)
     game.game()
