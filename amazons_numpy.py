@@ -335,15 +335,17 @@ class AI:
         best_move = 0
         best_score = AI.INFINITE
         stamp = time.time()
-
+     #   for move in sorted(board.get_possible_moves_sorting(), key=lambda x: evaluate(board, x, mode), reverse=False):
         for move in board.get_possible_moves():
+            
+            print(time.time() - stamp)
 
             board.perform_move(move)
             state = len(np.where(board.board == 0)[0])
-            if state > 15:
+            if state > 10:
                 depth = 2
             else:
-                depth = 2
+                depth = 3
             score = AI.alphabeta(board, depth, -AI.INFINITE, AI.INFINITE,
                                  True, mode)
             board.del_move(move)
@@ -370,6 +372,7 @@ class AI:
                 board.tables[mode - 1][hash(board.board.tobytes())] = heu
                 board.tables[mode - 1][hash(np.fliplr(board.board).tobytes())] = heu
                 board.tables[mode - 1][hash(np.flipud(board.board).tobytes())] = heu
+
 
             return heu
 
@@ -405,9 +408,19 @@ def ai(board: Board, mode):
         board.perform_move(tmp)
     return tmp
 
+def evaluate(board: Board, move, mode):
+    board.perform_move(move)
+    a = Heuristics.evaluate(board, mode)
+    board.del_move(move)
+    return a
+
+
+
 
 if __name__ == '__main__':
-    game = Amazons("config6x6.txt")
+    game = Amazons("configs/config3x3.txt")
     # example situation
     print(game.board)
+    stamp = time.time()
     game.game()
+    print(time.time()-stamp)
