@@ -306,7 +306,6 @@ class Heuristics:
             boardx[tuple(qmove)] = NEMPTY
 
         return count
-
     @staticmethod
     def moves_heuristic(board) -> int:
         indx = np.where(board.board == NWHITEQ) if board.WTurn else np.where(
@@ -418,7 +417,7 @@ def evaluate(board: Board, move, mode):
 
 
 if __name__ == '__main__':
-    game = Amazons("configs/config3x3.txt")
+    game = Amazons("configs/config6x6.txt")
     # example situation
     print(game.board)
     stamp = time.time()
