@@ -1,12 +1,17 @@
 #!python
 #cython: language_level=3
+#cython: boundscheck=False
+#cython: wraparound=False
+#cython: initializedcheck=False
+#cython: cdivision=True
+#cython: nonecheck=False
 import copy as cp
 import time
 import numpy as np
 cimport numpy as np
 cimport cython
 
-cdef int INF = 1000000
+cdef double INF = 1000000.0
 cdef MODES = ["player", "AB", "MCTS"]
 
 # codes
@@ -253,16 +258,108 @@ cpdef player(board : Board):
     return
 
 cdef class Heuristics:
+    
+    @cython.profile(False)   
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @staticmethod
+    cdef list getMovesInRadius(long[:,:] board,long[:,:] check,long [:] s,unsigned short depth, long[:,:] boardh):
+        cdef np.ndarray[long, ndim=2] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
+        cdef np.ndarray[long, ndim=2] boardx = np.pad(board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
+        cdef unsigned short i = 1
+        cdef np.ndarray[long, ndim=2] one_step_each_dir
+        cdef np.ndarray[long, ndim=1] fields
+        cdef long[:]y
+        cdef list ret = []
+        while ops.shape[0]>0:
+            one_step_each_dir = (np.asarray(s) + ops)        # go 1 step in each direction
+            fields = boardx[tuple(zip(*one_step_each_dir))]  # get the value of those fields
+            ops = (ops[fields == 0] / i).astype(int)         # only keep the free directions, normalize ops and keep the type
+            for y in one_step_each_dir[fields == 0]:
+                if not check[y[0]-1,y[1]-1]:
+                    boardh[y[0]-1,y[1]-1] = min(
+                        boardh[y[0]-1,y[1]-1],
+                        depth
+                    )
+                    check[y[0]-1,y[1]-1] = 1
+                    ret.append(y)
+            i += 1
+            ops = ops * i  # jump to nth step
+        return ret
+    
+    @cython.profile(False)   
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @staticmethod
+    cdef amazonBFS(long [:,:] board, long[:] s, long[:,:] hboard):
+        cdef unsigned int x
+        cdef list movesebene, temp
+        cdef list moves = [s]
+        cdef long [:,:] checkboard = np.zeros_like(hboard)
+        for x in range(1, board.shape[0] **2):
+            movesebene = []
+            for m in moves:
+                temp = Heuristics.getMovesInRadius(board, checkboard, m, x, hboard)
+                for n in temp:
+                    movesebene.append(n)
+            moves = movesebene
+            if len(moves) == 0:
+                break
+
+    @cython.profile(False)   
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @staticmethod
+    cdef double territorial_eval_heurisic(long[:,:]board,short token,unsigned short qn):
+        cdef unsigned short a,i,j
+        cdef double ret = 0.0
+
+        cdef np.ndarray[long, ndim=2] wboardo = np.full((board.shape[0],board.shape[0]), fill_value=999)
+        cdef np.ndarray[long, ndim=2] bboardo = np.full((board.shape[0],board.shape[0]), fill_value=999)
+
+        cdef long [:,:] wboard = wboardo
+        cdef long [:,:] bboard = bboardo
+        cdef long[:,:] amazons = Board.get_queen_pos(board, 1, qn, 1)
+
+        for a in range(amazons.shape[0]):
+            Heuristics.amazonBFS(board, amazons[a], wboard)
+
+        amazons = Board.get_queen_pos(board, 2, qn, 1)
+        for a in range(amazons.shape[0]):
+            Heuristics.amazonBFS(board, amazons[a], bboard)
+        
+        for i in range(board.shape[0]):
+            for j in range(board.shape[0]):
+                if token == 1:
+                    if wboard[i,j] == 999 and bboard[i,j] == 999:
+                        ret += 0
+                    elif wboard[i,j] == bboard[i,j] and wboard[i,j] != 999:
+                        ret += 1 / 5
+                    elif wboard[i,j] > bboard[i,j]:
+                        ret += 1
+                    else:
+                        ret += -1
+                    return ret
+                else:
+                    if wboard[i,j] == 999 and bboard[i,j] == 999:
+                        ret += 0
+                    elif wboard[i,j] == bboard[i,j] and wboard[i,j] != 999:
+                        ret += 1 / 5
+                    elif wboard[i,j] > bboard[i,j]:
+                        ret += -1
+                    else:
+                        ret += 1
+                    return ret
    
     @cython.profile(False)   
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @staticmethod
-    cdef int move_count( long[:, :] board, unsigned short token, unsigned short qn):
+    cdef double move_count( long[:, :] board, unsigned short token, unsigned short qn):
         cdef np.ndarray[long, ndim=2] boardx, ops, sused
         cdef np.ndarray[long, ndim=1] calcmoves
-        cdef unsigned int i, ret,j
-        ret = 0
+        cdef unsigned int i,j
+        cdef double ret = 0
 
         cdef long[:,:] amazons = Board.get_queen_pos(board, token, qn,1)
         boardx = np.pad(board, 1, "constant", constant_values=-1)  
@@ -296,12 +393,12 @@ cdef class AI:
     @staticmethod
     cdef long[:,:] get_ai_move(long[:, :] oboard, int mode, np.npy_bool owturn, unsigned short qnumber):  
 
-        cdef int best_score = INF
+        cdef double best_score = INF
         cdef np.npy_bool found = False
         cdef unsigned short token = 1 if owturn else 2
         cdef long[:, :, :] MOVES_view =  Board.fast_moves(oboard, token, qnumber)
 
-        cdef int score
+        cdef double score
         cdef long[:,:] best_move
         cdef long[:,:] board = oboard
         cdef np.npy_bool wturn = owturn
@@ -343,18 +440,22 @@ cdef class AI:
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @staticmethod
-    cdef int alphabeta(long[:, :] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, int a, int b, np.npy_bool maximizing, int mode):
-        cdef int heuval, ha
+    cdef double alphabeta(long[:, :] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, double a, double b, np.npy_bool maximizing, int mode):
+        cdef double heuval
         cdef np.npy_bool token = 1 if wturn else 2
 
         if depth == 0 or Board.iswon(board, wturn, qn):
-           # if mode == 1:
-            return Heuristics.move_count(board, token, qn)
-            #  else:
-            #     return Heuristics.terraeval(board, token, qn)
+            if mode == 1:
+                if not wturn:
+                    return Heuristics.move_count(board, 1, qn)-Heuristics.move_count(board, 2, qn)
+                else:
+                    return Heuristics.move_count(board, 2, qn)-Heuristics.move_count(board, 1, qn)
+
+            else:
+                return -Heuristics.territorial_eval_heurisic(board, token, qn)
 
       
-        cdef int best_score
+        cdef double best_score
         cdef long[:, :, :] MOVES_view = Board.fast_moves(board, token, qn)
 
         cdef np.ndarray[long, ndim=1] indicies = np.arange(MOVES_view.shape[0],dtype=int)
@@ -408,9 +509,11 @@ cdef class AI:
 
 
 cpdef main():
-    game = Amazons("../configs/config6x6.txt")
+    game = Amazons("../configs/config3x3.txt")
     # example situation
     print(game.board)
     stamp = time.time()
     game.game()
     print(time.time()-stamp)
+   
+    
