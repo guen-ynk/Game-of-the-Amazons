@@ -248,7 +248,8 @@ cpdef player(board : Board):
     print(s,d,a)
     return
 
-cdef class Heuristics:     
+cdef class Heuristics:
+   
     @cython.profile(False)   
     @cython.boundscheck(False)
     @cython.wraparound(False)
