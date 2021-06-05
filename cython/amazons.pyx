@@ -44,7 +44,7 @@ cdef class Amazons:
                 if not x:
                     player(board=self.board) 
                 else:
-                    self.board.board = AI.get_ai_move(self.board.board, x, self.board.wturn, self.board.qnumber)
+                    self.board.board_view = AI.get_ai_move(self.board.board, x, self.board.wturn, self.board.qnumber)
                     self.board.wturn = not self.board.wturn
                 print(self.board)
 
@@ -73,27 +73,26 @@ cdef class Board:
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @staticmethod # max optimized 
-    cdef np.ndarray[long ,ndim=2] get_queen_pos(long[:, :] a,short color, unsigned short num):
+    cdef long[:,:] get_queen_pos(long[:, :] a,short color, unsigned short num, unsigned short adder):
     
-        cdef np.ndarray[long,  ndim=2] pos = np.zeros(shape=(num,2),dtype=long)
-        cdef long[:, :] result_view = pos
+        cdef long[:, :] result_view = np.zeros(shape=(num,2),dtype=long)
         cdef unsigned short ind = 0
-
+        cdef unsigned short x,y
         for x in range(a.shape[0]):
             for y in range(a.shape[0]):
                 if a[x, y]==color:
-                    result_view[ind, 0]= x
-                    result_view[ind, 1]= y
+                    result_view[ind, 0]= x+adder
+                    result_view[ind, 1]= y+adder
                     ind+=1
                     if ind==num:
-                        return pos
+                        return result_view
 
     
     @cython.profile(False)
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @staticmethod
-    cdef list get_amazon_moves(long[:, :] board, np.ndarray s):
+    cdef long[:,:] get_amazon_moves(long[:, :] board, long[:] s):
         cdef np.ndarray[long, ndim=2] boardx, ops, sused
         cdef np.ndarray[long, ndim=1] calcmoves
         cdef unsigned short i
@@ -103,62 +102,67 @@ cdef class Board:
         ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
         i = 1
         while True:
-            sused = (s + ops)
+            sused = (np.asarray(s) + ops)
             calcmoves = boardx[tuple(zip(*sused))]
             ops = (ops[calcmoves == 0] / i).astype(long)
             if ops.shape[0]==0:
-                return ret
+                if len(ret)==0:
+                    return None
+                else:
+                    return np.asarray(ret)
             for y in range(sused[calcmoves == 0].shape[0]):
                 ret.append(sused[calcmoves == 0][y])
             i += 1
             ops = ops * i
-        return ret
+        return np.array(ret)
     @cython.profile(False)
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @staticmethod
     cdef np.ndarray[long, ndim=3] fast_moves(long[:, :] board, unsigned short token, unsigned short qn):
-        cdef np.ndarray[long, ndim=2] amazons, boardx, ops, sused
+        cdef np.ndarray[long, ndim=2] boardx, ops, sused
         cdef np.ndarray[long, ndim=1] calcmoves
-        cdef list ret, tmp
-        cdef unsigned int i
+        cdef list ret
+        cdef unsigned int i,j,s
         ret = []
 
-        amazons = Board.get_queen_pos(board, token, qn)+1
+        cdef long[:,:] amazons = Board.get_queen_pos(board, token, qn,1)
         boardx = np.pad(board, 1, "constant", constant_values=-1)  
-
-        for s in range(amazons.shape[0]):
-            tmp = Board.get_amazon_moves(board, amazons[s])
-            for qmove in tmp:
+        cdef long[:,:] boardx_view = boardx
+        cdef long[:,:] qmove
+        for s in range(qn):
+            qmove = Board.get_amazon_moves(board, amazons[s])
+            if qmove is None:
+                continue
+            for j in range(qmove.shape[0]):
                 i = 1
                 ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
-                boardx[qmove[0],qmove[1]] = boardx[amazons[s][0],amazons[s][1]]
-                boardx[amazons[s][0],amazons[s][1]] = NEMPTY
-                while True:
-                    sused = (qmove + ops)
+                boardx_view[qmove[j,0],qmove[j,1]] = boardx_view[amazons[s,0],amazons[s,1]]
+                boardx_view[amazons[s,0],amazons[s,1]] = NEMPTY
+                while len(ops)>0:
+                    sused = (qmove[j]+ ops)
                     calcmoves = boardx[tuple(zip(*sused))]
                     ops = (ops[calcmoves == 0] / i).astype(long)
-                    if len(ops)==0:
-                        break
                     for y in sused[calcmoves == 0]:
-                        ret.append((np.array([amazons[s], qmove, y])-1))
+                        ret.append((np.array([amazons[s], qmove[j], y])-1))
                     i += 1
                     ops = ops * i
-                boardx[amazons[s][0],amazons[s][1]] = boardx[qmove[0],qmove[1]]
-                boardx[qmove[0],qmove[1]] = NEMPTY
+                boardx_view[amazons[s,0],amazons[s,1]] = boardx_view[qmove[j,0],qmove[j,1]]
+                boardx_view[qmove[j,0],qmove[j,1]] = NEMPTY
         return np.array(ret)
+      
     @cython.profile(False)
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @staticmethod
     cdef np.npy_bool iswon(long[:, :] board ,np.npy_bool wturn, unsigned short qn):
 
-        cdef np.ndarray[long, ndim=2] amazons
         cdef np.ndarray[long, ndim=2] a
         cdef np.ndarray[long, ndim=2] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
 
-        amazons = Board.get_queen_pos(board, NWHITEQ if wturn else NBLACKQ, qn)
-        for i in range(amazons.shape[0]):
+        cdef long[:,:] amazons = Board.get_queen_pos(board, NWHITEQ if wturn else NBLACKQ, qn, 0)
+      
+        for i in range(qn):
             a = amazons[i]+ops
             for x in range(a.shape[0]):
                 if 0 <= a[x,0] < board.shape[0] and 0 <= a[x,1] < board.shape[0]:
@@ -255,37 +259,33 @@ cdef class Heuristics:
     @cython.wraparound(False)
     @staticmethod
     cdef int move_count( long[:, :] board, unsigned short token, unsigned short qn):
-        cdef np.ndarray[long, ndim=2] amazons, ops, sused, boardx
-        boardx = np.pad(board, 1, "constant", constant_values=-1)  
-        cdef long[:,:] boardx_view = boardx
+        cdef np.ndarray[long, ndim=2] boardx, ops, sused
         cdef np.ndarray[long, ndim=1] calcmoves
-        cdef list tmp
-        cdef unsigned int i, ret,x,y
+        cdef unsigned int i, ret,j
         ret = 0
 
-        amazons = Board.get_queen_pos(board, token, qn)+1
-       
-
-        for s in range(amazons.shape[0]):
-            tmp = Board.get_amazon_moves(board, amazons[s])
-            for qmove in tmp:
+        cdef long[:,:] amazons = Board.get_queen_pos(board, token, qn,1)
+        boardx = np.pad(board, 1, "constant", constant_values=-1)  
+        cdef long[:,:] boardx_view = boardx
+        cdef long[:,:] qmove
+        for s in range(qn):
+            qmove = Board.get_amazon_moves(board, amazons[s])
+            if qmove is None:
+                continue
+            for j in range(qmove.shape[0]):
                 i = 1
-                x= qmove[0]
-                y= qmove[1]
                 ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
-                boardx_view[x,y] = boardx_view[amazons[s,0], amazons[s,1]]
+                boardx_view[qmove[j,0],qmove[j,1]] = boardx_view[amazons[s,0],amazons[s,1]]
                 boardx_view[amazons[s,0],amazons[s,1]] = NEMPTY
-                while True:
-                    sused = (qmove + ops)
+                while len(ops)>0:
+                    sused = (qmove[j] + ops)
                     calcmoves = boardx[tuple(zip(*sused))]
                     ops = (ops[calcmoves == 0] / i).astype(long)
-                    if ops.shape[0]==0:
-                        break
-                    ret += sused[calcmoves == 0].shape[0]
+                    ret = ret + sused[calcmoves == 0].shape[0]
                     i += 1
                     ops = ops * i
-                boardx_view[amazons[s,0],amazons[s,1]] = boardx_view[x,y]
-                boardx_view[x,y] = NEMPTY
+                boardx_view[amazons[s,0],amazons[s,1]] = boardx_view[qmove[j,0],qmove[j,1]]
+                boardx_view[qmove[j,0],qmove[j,1]] = NEMPTY
         return ret
     
 
@@ -294,17 +294,16 @@ cdef class AI:
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @staticmethod
-    cdef np.ndarray[long,ndim=2] get_ai_move(long[:, :] oboard, int mode, np.npy_bool owturn, unsigned short qnumber):  
+    cdef long[:,:] get_ai_move(long[:, :] oboard, int mode, np.npy_bool owturn, unsigned short qnumber):  
 
         cdef int best_score = INF
         cdef np.npy_bool found = False
         cdef unsigned short token = 1 if owturn else 2
-        cdef np.ndarray[long, ndim=3] MOVES = Board.fast_moves(oboard, token, qnumber)
-        cdef long[:, :, :] MOVES_view = MOVES
+        cdef long[:, :, :] MOVES_view =  Board.fast_moves(oboard, token, qnumber)
 
         cdef int score
-        cdef np.ndarray[long, ndim=2] best_move
-        cdef np.ndarray[long,ndim=2] board = np.copy(oboard)
+        cdef long[:,:] best_move
+        cdef long[:,:] board = oboard
         cdef np.npy_bool wturn = owturn
         
         stamp = time.time()
@@ -330,7 +329,7 @@ cdef class AI:
             if score < best_score:
                 found = True
                 best_score = score
-                best_move = MOVES[i]
+                best_move = MOVES_view[i]
         if found:
             board[best_move[1,0], best_move[1,1]] = token
             board[best_move[0,0], best_move[0,1]] = NEMPTY
@@ -349,17 +348,16 @@ cdef class AI:
         cdef np.npy_bool token = 1 if wturn else 2
 
         if depth == 0 or Board.iswon(board, wturn, qn):
-            if mode == 1:
-                return Heuristics.move_count(board, token, qn)
+           # if mode == 1:
+            return Heuristics.move_count(board, token, qn)
             #  else:
             #     return Heuristics.terraeval(board, token, qn)
 
       
         cdef int best_score
-        cdef np.ndarray[long, ndim=3] MOVES = Board.fast_moves(board, token, qn)
-        cdef long[:, :, :] MOVES_view = MOVES
+        cdef long[:, :, :] MOVES_view = Board.fast_moves(board, token, qn)
 
-        cdef np.ndarray[long, ndim=1] indicies = np.arange(MOVES.shape[0],dtype=int)
+        cdef np.ndarray[long, ndim=1] indicies = np.arange(MOVES_view.shape[0],dtype=int)
         np.random.shuffle(indicies) # randomizer ->>>>>>>>>>>>>>> good speedup somehow
         if maximizing:
             best_score = -INF
