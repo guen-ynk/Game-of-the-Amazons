@@ -2,29 +2,32 @@
 #cython: language_level=3
 #cython: boundscheck=False
 #cython: wraparound=False
-#cython: initializedcheck=False
 #cython: cdivision=True
 #cython: nonecheck=False
+#cython: initializedcheck=False
+
 import copy as cp
 import time
 import numpy as np
 cimport numpy as np
 cimport cython
 
-cdef double INF = 1000000.0
-cdef MODES = ["player", "AB", "MCTS"]
+debug = ""
+cdef:
+     double INF = 1000000.0
+     MODES = ["player", "AB", "MCTS"]
+     short NARROW, NEMPTY, NWHITEQ, NBLACKQ
 
-# codes
-cdef short NARROW, NEMPTY, NWHITEQ, NBLACKQ
 NARROW = -1
 NEMPTY = 0
 NWHITEQ = 1
 NBLACKQ = 2
 
 cdef class Amazons:
-    cdef unsigned short n,white_mode, black_mode
-    cdef list white_init, black_init, player
-    cdef object board
+    cdef: 
+        unsigned short n,white_mode, black_mode
+        list white_init, black_init, player
+        object board
 
     def __init__(self, config="config.txt"):
         info = open(config, "r")
@@ -59,10 +62,11 @@ cdef class Amazons:
 
 
 cdef class Board:
-    cdef public np.npy_bool wturn 
-    cdef public unsigned short size, qnumber
-    cdef public np.ndarray wboard, bboard, board
-    cdef public long[:,:] board_view
+    cdef public:
+        np.npy_bool wturn 
+        unsigned short size, qnumber
+        np.ndarray wboard, bboard, board
+        long[:,:] board_view
 
     def __init__(self, size, white_init, black_init):
         self.wturn = True
@@ -70,21 +74,22 @@ cdef class Board:
         self.board = np.zeros((size, size), dtype=long)  # fill size x size  with empty fields
         self.qnumber = len(white_init[0])
         self.board[tuple(zip(*white_init))] = NWHITEQ  # fill in Amazons
-        self.board[tuple(zip(*black_init))] = NBLACKQ
+        self.board[tuple(zip(*black_init))] = NBLACKQ       
         self.board_view = self.board
         self.wboard, self.bboard = np.array([]), np.array([])
 
-    @cython.profile(False)
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
+   
     @staticmethod # max optimized 
     cdef long[:,:] get_queen_pos(long[:, :] a,short color, unsigned short num, unsigned short adder):
     
-        cdef long[:, :] result_view = np.zeros(shape=(num,2),dtype=long)
-        cdef unsigned short ind = 0
-        cdef unsigned short x,y
-        for x in range(a.shape[0]):
-            for y in range(a.shape[0]):
+        cdef:
+            long[:, :] result_view = np.zeros(shape=(num,2),dtype=long)
+            unsigned short ind = 0
+            Py_ssize_t lenght = a.shape[0]
+            unsigned short x,y
+
+        for x in range(lenght):
+            for y in range(lenght):
                 if a[x, y]==color:
                     result_view[ind, 0]= x+adder
                     result_view[ind, 1]= y+adder
@@ -93,19 +98,18 @@ cdef class Board:
                         return result_view
 
     
-    @cython.profile(False)
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
+   
     @staticmethod
     cdef long[:,:] get_amazon_moves(long[:, :] board, long[:] s):
-        cdef np.ndarray[long, ndim=2] boardx, ops, sused
-        cdef np.ndarray[long, ndim=1] calcmoves
-        cdef unsigned short i
-        cdef list ret
-        ret = []
+        cdef:
+            np.ndarray[long, ndim=2] boardx, ops, sused
+            np.ndarray[long, ndim=1] calcmoves
+            unsigned short i = 1
+            list ret = []
+
         boardx = np.pad(board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
         ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
-        i = 1
+
         while True:
             sused = (np.asarray(s) + ops)
             calcmoves = boardx[tuple(zip(*sused))]
@@ -120,21 +124,21 @@ cdef class Board:
             i += 1
             ops = ops * i
         return np.array(ret)
-    @cython.profile(False)
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
+   
     @staticmethod
     cdef np.ndarray[long, ndim=3] fast_moves(long[:, :] board, unsigned short token, unsigned short qn):
-        cdef np.ndarray[long, ndim=2] boardx, ops, sused
-        cdef np.ndarray[long, ndim=1] calcmoves
-        cdef list ret
-        cdef unsigned int i,j,s
-        ret = []
+        cdef:
+            np.ndarray[long, ndim=2] boardx = np.pad(board, 1, "constant", constant_values=-1)  
+            np.ndarray[long, ndim=2] ops, sused
+            np.ndarray[long, ndim=1] calcmoves
+        
+            long[:,:] amazons = Board.get_queen_pos(board, token, qn,1)
+            long[:,:] boardx_view = boardx
+            long[:,:] qmove
 
-        cdef long[:,:] amazons = Board.get_queen_pos(board, token, qn,1)
-        boardx = np.pad(board, 1, "constant", constant_values=-1)  
-        cdef long[:,:] boardx_view = boardx
-        cdef long[:,:] qmove
+            list ret = []
+            unsigned int i,j,s
+        
         for s in range(qn):
             qmove = Board.get_amazon_moves(board, amazons[s])
             if qmove is None:
@@ -156,16 +160,14 @@ cdef class Board:
                 boardx_view[qmove[j,0],qmove[j,1]] = NEMPTY
         return np.array(ret)
       
-    @cython.profile(False)
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
+   
     @staticmethod
     cdef np.npy_bool iswon(long[:, :] board ,np.npy_bool wturn, unsigned short qn):
 
-        cdef np.ndarray[long, ndim=2] a
-        cdef np.ndarray[long, ndim=2] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
-
-        cdef long[:,:] amazons = Board.get_queen_pos(board, NWHITEQ if wturn else NBLACKQ, qn, 0)
+        cdef:
+            np.ndarray[long, ndim=2] a
+            np.ndarray[long, ndim=2] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
+            long[:,:] amazons = Board.get_queen_pos(board, NWHITEQ if wturn else NBLACKQ, qn, 0)
       
         for i in range(qn):
             a = amazons[i]+ops
@@ -259,18 +261,17 @@ cpdef player(board : Board):
 
 cdef class Heuristics:
     
-    @cython.profile(False)   
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
     @staticmethod
     cdef list getMovesInRadius(long[:,:] board,long[:,:] check,long [:] s,unsigned short depth, long[:,:] boardh):
-        cdef np.ndarray[long, ndim=2] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
-        cdef np.ndarray[long, ndim=2] boardx = np.pad(board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
-        cdef unsigned short i = 1
-        cdef np.ndarray[long, ndim=2] one_step_each_dir
-        cdef np.ndarray[long, ndim=1] fields
-        cdef long[:]y
-        cdef list ret = []
+        cdef:
+            np.ndarray[long, ndim=2] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
+            np.ndarray[long, ndim=2] boardx = np.pad(board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
+            unsigned short i = 1
+            np.ndarray[long, ndim=2] one_step_each_dir
+            np.ndarray[long, ndim=1] fields
+            long[:]y
+            list ret = []
+
         while ops.shape[0]>0:
             one_step_each_dir = (np.asarray(s) + ops)        # go 1 step in each direction
             fields = boardx[tuple(zip(*one_step_each_dir))]  # get the value of those fields
@@ -287,15 +288,14 @@ cdef class Heuristics:
             ops = ops * i  # jump to nth step
         return ret
     
-    @cython.profile(False)   
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
     @staticmethod
     cdef amazonBFS(long [:,:] board, long[:] s, long[:,:] hboard):
-        cdef unsigned int x
-        cdef list movesebene, temp
-        cdef list moves = [s]
-        cdef long [:,:] checkboard = np.zeros_like(hboard)
+        cdef:
+            unsigned int x
+            list movesebene, temp
+            list moves = [s]
+            long [:,:] checkboard = np.zeros_like(hboard)
+
         for x in range(1, board.shape[0] **2):
             movesebene = []
             for m in moves:
@@ -306,20 +306,19 @@ cdef class Heuristics:
             if len(moves) == 0:
                 break
 
-    @cython.profile(False)   
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
+    
     @staticmethod
     cdef double territorial_eval_heurisic(long[:,:]board,short token,unsigned short qn):
-        cdef unsigned short a,i,j
-        cdef double ret = 0.0
+        cdef:
+            unsigned short a,i,j
+            double ret = 0.0
 
-        cdef np.ndarray[long, ndim=2] wboardo = np.full((board.shape[0],board.shape[0]), fill_value=999)
-        cdef np.ndarray[long, ndim=2] bboardo = np.full((board.shape[0],board.shape[0]), fill_value=999)
+            np.ndarray[long, ndim=2] wboardo = np.full((board.shape[0],board.shape[0]), fill_value=999)
+            np.ndarray[long, ndim=2] bboardo = np.full((board.shape[0],board.shape[0]), fill_value=999)
 
-        cdef long [:,:] wboard = wboardo
-        cdef long [:,:] bboard = bboardo
-        cdef long[:,:] amazons = Board.get_queen_pos(board, 1, qn, 1)
+            long [:,:] wboard = wboardo
+            long [:,:] bboard = bboardo
+            long[:,:] amazons = Board.get_queen_pos(board, 1, qn, 1)
 
         for a in range(amazons.shape[0]):
             Heuristics.amazonBFS(board, amazons[a], wboard)
@@ -330,41 +329,35 @@ cdef class Heuristics:
         
         for i in range(board.shape[0]):
             for j in range(board.shape[0]):
-                if token == 1:
-                    if wboard[i,j] == 999 and bboard[i,j] == 999:
-                        ret += 0
-                    elif wboard[i,j] == bboard[i,j] and wboard[i,j] != 999:
+                if wboard[i,j] == bboard[i,j] and wboard[i,j] != 999:
                         ret += 1 / 5
-                    elif wboard[i,j] > bboard[i,j]:
-                        ret += 1
+                else: 
+                    if token == 1:
+                        if wboard[i,j] < bboard[i,j]:
+                            ret += 1
+                        else:
+                            ret -= 1
                     else:
-                        ret += -1
-                    return ret
-                else:
-                    if wboard[i,j] == 999 and bboard[i,j] == 999:
-                        ret += 0
-                    elif wboard[i,j] == bboard[i,j] and wboard[i,j] != 999:
-                        ret += 1 / 5
-                    elif wboard[i,j] > bboard[i,j]:
-                        ret += -1
-                    else:
-                        ret += 1
-                    return ret
+                        if wboard[i,j] > bboard[i,j]:
+                            ret += 1
+                        else:
+                            ret -= 1
+        return ret
    
-    @cython.profile(False)   
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
+    
     @staticmethod
     cdef double move_count( long[:, :] board, unsigned short token, unsigned short qn):
-        cdef np.ndarray[long, ndim=2] boardx, ops, sused
-        cdef np.ndarray[long, ndim=1] calcmoves
-        cdef unsigned int i,j
-        cdef double ret = 0
+        cdef:
+            np.ndarray[long, ndim=2] boardx = np.pad(board, 1, "constant", constant_values=-1)  
+            np.ndarray[long, ndim=2] ops, sused
+            np.ndarray[long, ndim=1] calcmoves
+            unsigned int i,j
+            double ret = 0
 
-        cdef long[:,:] amazons = Board.get_queen_pos(board, token, qn,1)
-        boardx = np.pad(board, 1, "constant", constant_values=-1)  
-        cdef long[:,:] boardx_view = boardx
-        cdef long[:,:] qmove
+            long[:,:] amazons = Board.get_queen_pos(board, token, qn,1)
+            long[:,:] boardx_view = boardx
+            long[:,:] qmove
+
         for s in range(qn):
             qmove = Board.get_amazon_moves(board, amazons[s])
             if qmove is None:
@@ -387,133 +380,114 @@ cdef class Heuristics:
     
 
 cdef class AI:
-    @cython.profile(False)
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
+   
     @staticmethod
-    cdef long[:,:] get_ai_move(long[:, :] oboard, int mode, np.npy_bool owturn, unsigned short qnumber):  
+    cdef long[:,:] get_ai_move(long[:, :] board, int mode, np.npy_bool owturn, unsigned short qnumber):  
+        cdef:
+            double best_score = -INF
+            unsigned short token = 1 if owturn else 2
+            long[:, :, :] MOVES_view =  Board.fast_moves(board, token, qnumber)
 
-        cdef double best_score = INF
-        cdef np.npy_bool found = False
-        cdef unsigned short token = 1 if owturn else 2
-        cdef long[:, :, :] MOVES_view =  Board.fast_moves(oboard, token, qnumber)
-
-        cdef double score
-        cdef long[:,:] best_move
-        cdef long[:,:] board = oboard
-        cdef np.npy_bool wturn = owturn
+            double score
+            long[:,:] best_move
+            np.npy_bool wturn = owturn
+            unsigned short depth = 2 if MOVES_view.shape[0] > 25 else 4
         
-        stamp = time.time()
-
         for i in range(MOVES_view.shape[0]):
 
             # move
             board[MOVES_view[i,1,0], MOVES_view[i,1,1]] = token
             board[MOVES_view[i,0,0], MOVES_view[i,0,1]] = NEMPTY
             board[MOVES_view[i,2,0], MOVES_view[i,2,1]] = NARROW
-            wturn = not wturn
-           
-            score = AI.alphabeta(board, wturn, qnumber, 2, -INF, INF, True, mode)
+
+            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, INF, False, mode)
           
             # undo 
             board[MOVES_view[i,2,0], MOVES_view[i,2,1]] = NEMPTY
             board[MOVES_view[i,1,0], MOVES_view[i,1,1]] = NEMPTY
             board[MOVES_view[i,0,0], MOVES_view[i,0,1]] = token
-            wturn = not wturn
-
-            print(time.time() - stamp)
-            stamp = time.time()
-            if score < best_score:
-                found = True
+     
+            if score > best_score:
                 best_score = score
                 best_move = MOVES_view[i]
-        if found:
-            board[best_move[1,0], best_move[1,1]] = token
-            board[best_move[0,0], best_move[0,1]] = NEMPTY
-            board[best_move[2,0], best_move[2,1]] = NARROW
-            return board
-        else:
-            return oboard
-   
+            
+        
+        board[best_move[1,0], best_move[1,1]] = token
+        board[best_move[0,0], best_move[0,1]] = NEMPTY
+        board[best_move[2,0], best_move[2,1]] = NARROW
+        return board
     
-    @cython.profile(False)
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
+   
     @staticmethod
     cdef double alphabeta(long[:, :] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, double a, double b, np.npy_bool maximizing, int mode):
-        cdef double heuval
-        cdef np.npy_bool token = 1 if wturn else 2
+        cdef:
+            double heuval
+            np.npy_bool token = 1 if wturn else 2
 
         if depth == 0 or Board.iswon(board, wturn, qn):
             if mode == 1:
-                if not wturn:
+                if wturn:
                     return Heuristics.move_count(board, 1, qn)-Heuristics.move_count(board, 2, qn)
                 else:
                     return Heuristics.move_count(board, 2, qn)-Heuristics.move_count(board, 1, qn)
 
             else:
-                return -Heuristics.territorial_eval_heurisic(board, token, qn)
+                return Heuristics.territorial_eval_heurisic(board, token, qn)
 
       
-        cdef double best_score
-        cdef long[:, :, :] MOVES_view = Board.fast_moves(board, token, qn)
+        cdef:
+            double best_score
+            long[:, :, :] MOVES_view = Board.fast_moves(board, token, qn)
+            np.ndarray[long, ndim=1] indicies = np.arange(MOVES_view.shape[0],dtype=int)
+            Py_ssize_t length = indicies.shape[0]
 
-        cdef np.ndarray[long, ndim=1] indicies = np.arange(MOVES_view.shape[0],dtype=int)
         np.random.shuffle(indicies) # randomizer ->>>>>>>>>>>>>>> good speedup somehow
+
         if maximizing:
             best_score = -INF
-            for i in range(indicies.shape[0]):
+            for i in range(length):
 
                 # do move
                 board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = token # unpythonic way .. thanks to cython
                 board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = NEMPTY
                 board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = NARROW
-                wturn = not wturn
 
-                best_score = max(best_score, AI.alphabeta(board, wturn, qn, depth - 1, a, b, False, mode))
+                best_score = max(best_score, AI.alphabeta(board, not wturn, qn, depth - 1, a, b, False, mode))
                 
                 # undo 
                 board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = NEMPTY
                 board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = NEMPTY
                 board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = token
-                wturn = not wturn
-
                 a = max(a, best_score)
-                if b <= a:
+                if b <= best_score:
                     break
-
-            return best_score
         else:
             best_score = INF
 
-            for i in range(indicies.shape[0]):
+            for i in range(length):
 
                 # move
                 board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = token
                 board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = NEMPTY
                 board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = NARROW
-                wturn = not wturn
 
-                best_score = min(best_score, AI.alphabeta(board,wturn, qn, depth - 1, a, b, True, mode))
+                best_score = min(best_score, AI.alphabeta(board,not wturn, qn, depth - 1, a, b, True, mode))
                 
                 # undo 
                 board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = NEMPTY
                 board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = NEMPTY
                 board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = token
-                wturn = not wturn
-
                 b = min(b, best_score)
-                if b <= a:
+                if best_score <= a:
                     break
-            return best_score
+        return best_score
 
 
-cpdef main():
-    game = Amazons("../configs/config3x3.txt")
+cpdef main(inputfile = "3x3"):
+    game = Amazons("../configs/config"+inputfile+".txt")
     # example situation
     print(game.board)
     stamp = time.time()
     game.game()
     print(time.time()-stamp)
-   
     

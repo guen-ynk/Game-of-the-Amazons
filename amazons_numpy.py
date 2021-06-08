@@ -346,7 +346,7 @@ class AI:
             else:
                 depth = 3
             score = AI.alphabeta(board, depth, -AI.INFINITE, AI.INFINITE,
-                                 True, mode)
+                                 False, mode)
             board.del_move(move)
             print(time.time() - stamp)
             stamp = time.time()
