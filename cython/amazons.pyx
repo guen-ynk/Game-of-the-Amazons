@@ -8,8 +8,6 @@
 
 import time
 import player
-import copy as cp
-from collections import defaultdict
 import numpy as np
 cimport numpy as np
 cimport cython
@@ -485,11 +483,15 @@ cdef class MonteCarloTreeSearchNode():
         cdef:
             MonteCarloTreeSearchNode best = None
             double best_score = -1000000.0
-            double score 
+            double score, ratio
             double logownvisits = np.log(this._number_of_visits)
 
         for c in this.children:
-            score = ((c.wins - c.loses) / c._number_of_visits) + c_param * np.sqrt((2 * logownvisits  / c._number_of_visits))
+            # original score
+           # score = ((c.wins - c.loses) / c._number_of_visits) + c_param * np.sqrt((2 * logownvisits  / c._number_of_visits))
+            ratio = (c.wins/(c._number_of_visits))
+            # paper score
+            score = ratio + np.sqrt((logownvisits/c._number_of_visits)*min(1/this.qnumber, ratio-(ratio**2)+ np.sqrt((2 * logownvisits  / c._number_of_visits))))
             if score > best_score:
                 best_score = score
                 best = c
