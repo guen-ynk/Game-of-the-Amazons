@@ -6,22 +6,17 @@
 #cython: nonecheck=False
 #cython: initializedcheck=False
 
-import copy as cp
 import time
+import player
 import numpy as np
 cimport numpy as np
 cimport cython
 
-debug = ""
-cdef:
-     double INF = 1000000.0
-     MODES = ["player", "AB", "MCTS"]
-     short NARROW, NEMPTY, NWHITEQ, NBLACKQ
 
-NARROW = -1
-NEMPTY = 0
-NWHITEQ = 1
-NBLACKQ = 2
+#arrow -1
+#empty  0
+#white  1
+#black  2
 
 cdef class Amazons:
     cdef: 
@@ -41,7 +36,7 @@ cdef class Amazons:
         self.player = [self.white_mode, self.black_mode]
         self.board = Board(self.n, self.white_init, self.black_init)
 
-    cpdef game(self):
+    def game(self):
         ongoing : bool = True
         while ongoing:
             for n, x in enumerate(self.player):
@@ -50,14 +45,14 @@ cdef class Amazons:
                     ongoing = False
                     break
                 if not x:
-                    player(board=self.board) 
+                    player.player(self.board) 
                 else:
                     self.board.board_view = AI.get_ai_move(self.board.board, x, self.board.wturn, self.board.qnumber)
                     self.board.wturn = not self.board.wturn
                 print(self.board)
 
     def __str__(self):
-        return str(self.n) + " " + MODES[self.white_mode] + str(self.white_init) + " " + MODES[self.black_mode] + str(
+        return str(self.n) + " " + ["player", "AB", "MCTS"][self.white_mode] + str(self.white_init) + " " + ["player", "AB", "MCTS"][self.black_mode] + str(
             self.black_init) + "\n" + str(self.board)
 
 
@@ -73,8 +68,8 @@ cdef class Board:
         self.size = size
         self.board = np.zeros((size, size), dtype=long)  # fill size x size  with empty fields
         self.qnumber = len(white_init[0])
-        self.board[tuple(zip(*white_init))] = NWHITEQ  # fill in Amazons
-        self.board[tuple(zip(*black_init))] = NBLACKQ       
+        self.board[tuple(zip(*white_init))] = 1  # fill in Amazons
+        self.board[tuple(zip(*black_init))] = 2       
         self.board_view = self.board
         self.wboard, self.bboard = np.array([]), np.array([])
 
@@ -147,7 +142,7 @@ cdef class Board:
                 i = 1
                 ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
                 boardx_view[qmove[j,0],qmove[j,1]] = boardx_view[amazons[s,0],amazons[s,1]]
-                boardx_view[amazons[s,0],amazons[s,1]] = NEMPTY
+                boardx_view[amazons[s,0],amazons[s,1]] = 0
                 while len(ops)>0:
                     sused = (qmove[j]+ ops)
                     calcmoves = boardx[tuple(zip(*sused))]
@@ -157,7 +152,7 @@ cdef class Board:
                     i += 1
                     ops = ops * i
                 boardx_view[amazons[s,0],amazons[s,1]] = boardx_view[qmove[j,0],qmove[j,1]]
-                boardx_view[qmove[j,0],qmove[j,1]] = NEMPTY
+                boardx_view[qmove[j,0],qmove[j,1]] = 0
         return np.array(ret)
       
    
@@ -167,7 +162,7 @@ cdef class Board:
         cdef:
             np.ndarray[long, ndim=2] a
             np.ndarray[long, ndim=2] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
-            long[:,:] amazons = Board.get_queen_pos(board, NWHITEQ if wturn else NBLACKQ, qn, 0)
+            long[:,:] amazons = Board.get_queen_pos(board, 1 if wturn else 2, qn, 0)
       
         for i in range(qn):
             a = amazons[i]+ops
@@ -177,87 +172,13 @@ cdef class Board:
                         return False
         return True
 
-    cpdef move(self, s, d):
-        self.board[d] = self.board[s]
-        self.board[s] = NEMPTY
-
-    cpdef shoot(self, d):
-        self.board[d] = NARROW
-   
-    cpdef evaluate(self):
-        self.wturn = not self.wturn 
-    
-    cpdef try_move(self, input_tup: tuple):
-
-        (s, d) = input_tup
-
-        if d[0] not in range(self.board.shape[0]) or d[1] not in range(self.board.shape[0]):
-            print("ERR outofbounds")
-            return False
-
-        if (self.wturn and self.board[s] != NWHITEQ) or (not self.wturn and self.board[s] != NBLACKQ):
-            print("Err TURN")
-            return False
-
-        (h, v) = (s[0] - d[0], s[1] - d[1])
-
-        if (h and v and abs(h / v) != 1) or (not h and not v):
-            print("ERR DIR", h, v)
-            return False
-
-        op = (0 if not h else (-int(h / abs(h))), 0 if not v else (-int(v / abs(v))))
-        indx = np.arange(self.board.shape[0])
-        # own approach on is_free check, excluding any loops -> could be used to generate random moves later on
-        les = s[0] if not op[0] else indx[
-                                     max(0, min(s[0] + op[0], d[0]))
-                                     :min(self.size, max(s[0], d[0] + op[0]))][
-                                     ::op[0]]
-
-        res = s[1] if not op[1] else indx[
-                                     max(0, min(s[1] + op[1], d[1]))
-                                     :min(self.size, max(s[1], d[1] + op[1]))][
-                                     ::op[1]]
-
-        if np.any(self.board[(les, res)]):
-            print("ERR NOT FREE")
-            return False
-
-        return True
-
     def __str__(self):
         return "{0}\n{1}".format(("   " + "  ".join([chr(ord("a") + y) for y in range(self.size)])), "\n".join(
             [(str(x + 1) + ("  " if x < 9 else " ")) + "  ".join(map(lambda x: ['■','.','W','B'][x+1], self.board[x])) for x in
              range(self.size - 1, -1, -1)]))
 
 
-cpdef alphabet2num(pos_raw):
-    return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
 
-
-cpdef player(board : Board):
-
-    while True:
-        (s, d) = map(alphabet2num,
-                     input(("white" if board.wturn else "black") + " amazonmove please: e.g. a8-a4: ").split("-"))
-        if board.try_move((s, d)):
-            board.move(s, d)
-            break
-        else:
-            print("invalid move or input")
-
-    print(board)
-
-    while True:
-        a = alphabet2num(input("arrow coords please: e.g. a5: "))
-        if board.try_move((d, a)):
-            board.shoot(a)
-            break
-        else:
-            print("invalid arrow pos or input")
-
-    board.evaluate()
-    print(s,d,a)
-    return
 
 cdef class Heuristics:
     
@@ -366,7 +287,7 @@ cdef class Heuristics:
                 i = 1
                 ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
                 boardx_view[qmove[j,0],qmove[j,1]] = boardx_view[amazons[s,0],amazons[s,1]]
-                boardx_view[amazons[s,0],amazons[s,1]] = NEMPTY
+                boardx_view[amazons[s,0],amazons[s,1]] = 0
                 while len(ops)>0:
                     sused = (qmove[j] + ops)
                     calcmoves = boardx[tuple(zip(*sused))]
@@ -375,7 +296,7 @@ cdef class Heuristics:
                     i += 1
                     ops = ops * i
                 boardx_view[amazons[s,0],amazons[s,1]] = boardx_view[qmove[j,0],qmove[j,1]]
-                boardx_view[qmove[j,0],qmove[j,1]] = NEMPTY
+                boardx_view[qmove[j,0],qmove[j,1]] = 0
         return ret
     
 
@@ -384,7 +305,7 @@ cdef class AI:
     @staticmethod
     cdef long[:,:] get_ai_move(long[:, :] board, int mode, np.npy_bool owturn, unsigned short qnumber):  
         cdef:
-            double best_score = -INF
+            double best_score = -1000000.0
             unsigned short token = 1 if owturn else 2
             long[:, :, :] MOVES_view =  Board.fast_moves(board, token, qnumber)
 
@@ -397,14 +318,14 @@ cdef class AI:
 
             # move
             board[MOVES_view[i,1,0], MOVES_view[i,1,1]] = token
-            board[MOVES_view[i,0,0], MOVES_view[i,0,1]] = NEMPTY
-            board[MOVES_view[i,2,0], MOVES_view[i,2,1]] = NARROW
+            board[MOVES_view[i,0,0], MOVES_view[i,0,1]] = 0
+            board[MOVES_view[i,2,0], MOVES_view[i,2,1]] = -1
 
-            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, INF, False, mode)
+            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, 1000000.0, False, mode)
           
             # undo 
-            board[MOVES_view[i,2,0], MOVES_view[i,2,1]] = NEMPTY
-            board[MOVES_view[i,1,0], MOVES_view[i,1,1]] = NEMPTY
+            board[MOVES_view[i,2,0], MOVES_view[i,2,1]] = 0
+            board[MOVES_view[i,1,0], MOVES_view[i,1,1]] = 0
             board[MOVES_view[i,0,0], MOVES_view[i,0,1]] = token
      
             if score > best_score:
@@ -413,8 +334,8 @@ cdef class AI:
             
         
         board[best_move[1,0], best_move[1,1]] = token
-        board[best_move[0,0], best_move[0,1]] = NEMPTY
-        board[best_move[2,0], best_move[2,1]] = NARROW
+        board[best_move[0,0], best_move[0,1]] = 0
+        board[best_move[2,0], best_move[2,1]] = -1
         return board
     
    
@@ -444,44 +365,46 @@ cdef class AI:
         np.random.shuffle(indicies) # randomizer ->>>>>>>>>>>>>>> good speedup somehow
 
         if maximizing:
-            best_score = -INF
+            best_score = -1000000.0
             for i in range(length):
 
                 # do move
                 board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = token # unpythonic way .. thanks to cython
-                board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = NEMPTY
-                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = NARROW
+                board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = 0
+                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = -1
 
                 best_score = max(best_score, AI.alphabeta(board, not wturn, qn, depth - 1, a, b, False, mode))
                 
                 # undo 
-                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = NEMPTY
-                board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = NEMPTY
+                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = 0
+                board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = 0
                 board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = token
                 a = max(a, best_score)
                 if b <= best_score:
                     break
         else:
-            best_score = INF
+            best_score = 1000000.0
 
             for i in range(length):
 
                 # move
                 board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = token
-                board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = NEMPTY
-                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = NARROW
+                board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = 0
+                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = -1
 
                 best_score = min(best_score, AI.alphabeta(board,not wturn, qn, depth - 1, a, b, True, mode))
                 
                 # undo 
-                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = NEMPTY
-                board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = NEMPTY
+                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = 0
+                board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = 0
                 board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = token
                 b = min(b, best_score)
                 if best_score <= a:
                     break
         return best_score
 
+cpdef alphabet2num(pos_raw):
+    return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
 
 cpdef main(inputfile = "3x3"):
     game = Amazons("../configs/config"+inputfile+".txt")
