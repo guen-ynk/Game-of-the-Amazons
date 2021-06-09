@@ -8,6 +8,8 @@
 
 import time
 import player
+import copy as cp
+from collections import defaultdict
 import numpy as np
 cimport numpy as np
 cimport cython
@@ -46,8 +48,12 @@ cdef class Amazons:
                     break
                 if not x:
                     player.player(self.board) 
-                else:
+                elif x==1 or x==2:
                     self.board.board_view = AI.get_ai_move(self.board.board, x, self.board.wturn, self.board.qnumber)
+                    self.board.wturn = not self.board.wturn
+                else:
+                    res = MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn).best_action(10000)
+                    self.board.board_view [...] = res.board
                     self.board.wturn = not self.board.wturn
                 print(self.board)
 
@@ -60,7 +66,7 @@ cdef class Board:
     cdef public:
         np.npy_bool wturn 
         unsigned short size, qnumber
-        np.ndarray wboard, bboard, board
+        np.ndarray board
         long[:,:] board_view
 
     def __init__(self, size, white_init, black_init):
@@ -71,7 +77,6 @@ cdef class Board:
         self.board[tuple(zip(*white_init))] = 1  # fill in Amazons
         self.board[tuple(zip(*black_init))] = 2       
         self.board_view = self.board
-        self.wboard, self.bboard = np.array([]), np.array([])
 
    
     @staticmethod # max optimized 
@@ -402,6 +407,112 @@ cdef class AI:
                 if best_score <= a:
                     break
         return best_score
+
+cdef class MonteCarloTreeSearchNode():
+    cdef public:
+        np.npy_bool wturn 
+        unsigned short qnumber
+        long[:,:] board
+        MonteCarloTreeSearchNode parent
+        list children, _untried_actions
+        double _number_of_visits
+        object _results, state
+        long [:,:] parent_action
+
+    @cython.wraparound(True)
+    def __init__(self, bv, qn, wt, parent=None, parent_action=None):
+        self.board = bv
+        self.qnumber = qn
+        self.wturn = wt
+        self.parent = parent
+        self.parent_action = parent_action
+        self.children = []
+        self._number_of_visits = 0
+        self._results = defaultdict(int)
+        self._results[1] = 0
+        self._results[-1] = 0
+        self._untried_actions = list(Board.fast_moves(self.board, 1 if self.wturn else 2, self.qnumber))
+    @cython.wraparound(True)
+    def q(self):
+
+        wins = self._results[1]
+        loses = self._results[-1]
+        return wins - loses
+
+    def n(self):
+        return self._number_of_visits
+
+    def expand(self):
+        cdef long[:,:] action = self._untried_actions.pop()
+        cdef long[:,:] next_state = np.zeros_like(self.board)
+        next_state [...] = self.board
+        next_state[action[1,0],action[1,1]] = 1 if self.wturn else 2
+        next_state[action[0,0],action[0,1]] = 0 
+        next_state[action[2,0],action[2,1]] = -1
+
+        child_node = MonteCarloTreeSearchNode(
+            next_state, self.qnumber, not self.wturn, parent=self, parent_action=action)
+
+        self.children.append(child_node)
+        return child_node 
+
+    def rollout(self):
+        cdef long[:,:] current_rollout_state  = np.zeros_like(self.board)
+        current_rollout_state [...] = self.board
+        current_wturn = self.wturn
+        cdef long[:,:] action
+
+        while not Board.iswon(current_rollout_state, current_wturn, self.qnumber):
+            possible_moves = list(Board.fast_moves(current_rollout_state, 1 if current_wturn else 2, self.qnumber))
+            
+            action = self.rollout_policy(possible_moves)
+            current_rollout_state[action[1,0],action[1,1]] = 1 if current_wturn else 2
+            current_rollout_state[action[0,0],action[0,1]] = 0 
+            current_rollout_state[action[2,0],action[2,1]] = -1
+            current_wturn = not current_wturn
+
+        # current_rollout_state.wturn verlierer
+        return -1 if current_wturn == self.wturn else 1
+
+    def backpropagate(self, result):
+        self._number_of_visits += 1.
+        self._results[result] += 1.
+        if self.parent:
+            self.parent.backpropagate(result)
+
+
+
+    def best_child(self, c_param=0.1):
+
+        choices_weights = [(c.q() / c.n()) + c_param * np.sqrt((2 * np.log(self.n()) / c.n())) for c in self.children]
+        return self.children[np.argmax(choices_weights)]
+
+    def rollout_policy(self, possible_moves):
+    
+        return possible_moves[np.random.randint(len(possible_moves))]
+    
+    def _tree_policy(self):
+
+        current_node = self
+        while not Board.iswon(current_node.board, current_node.wturn, current_node.qnumber):
+            
+            if len( current_node._untried_actions) != 0:
+                return current_node.expand()
+            else:
+                current_node = current_node.best_child()
+        return current_node
+    
+    def best_action(self, number=100):
+        simulation_no = number
+        
+        
+        for i in range(simulation_no):
+            
+            v = self._tree_policy()
+            reward = v.rollout()
+            v.backpropagate(reward)
+        
+        return self.best_child(c_param=0.1)
 
 cpdef alphabet2num(pos_raw):
     return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
