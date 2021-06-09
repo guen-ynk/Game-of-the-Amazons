@@ -6,8 +6,11 @@ Linux optimized !
 
 ## Usage:
 > cd cython/
+> &
 > python
+> &
 > import amazons
+> &
 > amazons.main(3x3) or amazons.main(4x4) ... also see configs/
 
 
