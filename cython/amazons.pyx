@@ -37,13 +37,11 @@ cdef class Amazons:
         self.board = Board(self.n, self.white_init, self.black_init)
 
     def game(self):
-        ongoing : bool = True
-        while ongoing:
+        while True:
             for n, x in enumerate(self.player):
                 if Board.iswon(self.board.board_view, self.board.wturn, self.board.qnumber):
                     print("No Moves possible", "black" if n else "white", "lost")
-                    ongoing = False
-                    break
+                    return not self.board.wturn
                 if not x:
                     player.player(self.board) 
                 elif x==1 or x==2:
@@ -488,7 +486,7 @@ cdef class MonteCarloTreeSearchNode():
 
         for c in this.children:
             # original score
-           # score = ((c.wins - c.loses) / c._number_of_visits) + c_param * np.sqrt((2 * logownvisits  / c._number_of_visits))
+            # score = ((c.wins - c.loses) / c._number_of_visits) + c_param * np.sqrt((2 * logownvisits  / c._number_of_visits))
             ratio = (c.wins/(c._number_of_visits))
             # paper score
             score = ratio + np.sqrt((logownvisits/c._number_of_visits)*min(1/this.qnumber, ratio-(ratio**2)+ np.sqrt((2 * logownvisits  / c._number_of_visits))))
@@ -529,11 +527,27 @@ cdef class MonteCarloTreeSearchNode():
 cpdef alphabet2num(pos_raw):
     return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
 
-cpdef main(inputfile = "3x3"):
-    game = Amazons("../configs/config"+inputfile+".txt")
-    # example situation
-    print(game.board)
-    stamp = time.time()
-    game.game()
-    print(time.time()-stamp)
+cpdef main(times=1,inputfile = "3x3"):
+    cdef unsigned long white = 0
+    cdef unsigned long black = 0
+
+    for _ in range(times):
+        game = Amazons("../configs/config"+inputfile+".txt")
+        print(game.board)
+        stamp = time.time()
+        if(game.game()):
+            white+=1
+        else:
+            black+=1
+        print(time.time()-stamp, "seconds")
+    print("white wins: ", white)
+    print("black wins: ", black)
+    #3x3
+    #white wins:  73    1
+    #black wins:  27    3 10000
+    #white wins:  91    3 10000
+    #black wins:  9     1
+    #59/ 100 MCTS
+
+    
     
