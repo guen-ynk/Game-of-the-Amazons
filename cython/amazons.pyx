@@ -52,8 +52,7 @@ cdef class Amazons:
                     self.board.board_view = AI.get_ai_move(self.board.board, x, self.board.wturn, self.board.qnumber)
                     self.board.wturn = not self.board.wturn
                 else:
-                    res = MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn).best_action(10000)
-                    self.board.board_view [...] = res.board
+                    self.board.board_view [...] = MonteCarloTreeSearchNode.best_action(MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn),10000, 0.1)
                     self.board.wturn = not self.board.wturn
                 print(self.board)
 
@@ -415,11 +414,10 @@ cdef class MonteCarloTreeSearchNode():
         long[:,:] board
         MonteCarloTreeSearchNode parent
         list children, _untried_actions
-        double _number_of_visits
-        object _results, state
+        long _number_of_visits
+        unsigned long wins, loses
         long [:,:] parent_action
 
-    @cython.wraparound(True)
     def __init__(self, bv, qn, wt, parent=None, parent_action=None):
         self.board = bv
         self.qnumber = qn
@@ -428,91 +426,103 @@ cdef class MonteCarloTreeSearchNode():
         self.parent_action = parent_action
         self.children = []
         self._number_of_visits = 0
-        self._results = defaultdict(int)
-        self._results[1] = 0
-        self._results[-1] = 0
+        self.wins = 0
+        self.loses = 0
         self._untried_actions = list(Board.fast_moves(self.board, 1 if self.wturn else 2, self.qnumber))
-    @cython.wraparound(True)
-    def q(self):
 
-        wins = self._results[1]
-        loses = self._results[-1]
-        return wins - loses
-
-    def n(self):
-        return self._number_of_visits
-
-    def expand(self):
-        cdef long[:,:] action = self._untried_actions.pop()
-        cdef long[:,:] next_state = np.zeros_like(self.board)
-        next_state [...] = self.board
-        next_state[action[1,0],action[1,1]] = 1 if self.wturn else 2
+    @staticmethod
+    cdef object expand(object this):
+        cdef long[:,:] oboard = this.board
+        cdef long[:,:] action = this._untried_actions.pop()
+        cdef long[:,:] next_state = np.empty_like(this.board, dtype=long)
+        next_state[...] = oboard
+        next_state[action[1,0],action[1,1]] = 1 if this.wturn else 2
         next_state[action[0,0],action[0,1]] = 0 
         next_state[action[2,0],action[2,1]] = -1
 
         child_node = MonteCarloTreeSearchNode(
-            next_state, self.qnumber, not self.wturn, parent=self, parent_action=action)
+            next_state, this.qnumber, not this.wturn, parent=this, parent_action=action)
 
-        self.children.append(child_node)
+        this.children.append(child_node)
         return child_node 
 
-    def rollout(self):
-        cdef long[:,:] current_rollout_state  = np.zeros_like(self.board)
-        current_rollout_state [...] = self.board
-        current_wturn = self.wturn
-        cdef long[:,:] action
+    @staticmethod
+    cdef short rollout(object this):
+        cdef:
+            long[:,:] oboard = this.board
+            long[:,:] current_rollout_state  = np.empty_like(this.board)
+            long[:,:] action
+            list possible_moves
+            np.npy_bool current_wturn = this.wturn
+        current_rollout_state [...] = oboard
 
-        while not Board.iswon(current_rollout_state, current_wturn, self.qnumber):
-            possible_moves = list(Board.fast_moves(current_rollout_state, 1 if current_wturn else 2, self.qnumber))
-            
-            action = self.rollout_policy(possible_moves)
+        while not Board.iswon(current_rollout_state, current_wturn, this.qnumber):
+            possible_moves = list(Board.fast_moves(current_rollout_state, 1 if current_wturn else 2, this.qnumber))
+            action = possible_moves[np.random.randint(len(possible_moves))]
+
             current_rollout_state[action[1,0],action[1,1]] = 1 if current_wturn else 2
             current_rollout_state[action[0,0],action[0,1]] = 0 
             current_rollout_state[action[2,0],action[2,1]] = -1
             current_wturn = not current_wturn
 
         # current_rollout_state.wturn verlierer
-        return -1 if current_wturn == self.wturn else 1
+        return -1 if current_wturn == this.wturn else 1
 
-    def backpropagate(self, result):
-        self._number_of_visits += 1.
-        self._results[result] += 1.
-        if self.parent:
-            self.parent.backpropagate(result)
+    @staticmethod
+    cdef void backpropagate(object this, short result):
+        this._number_of_visits += 1.
+        if result == 1:
+            this.wins+=1.
+        else:
+            this.loses+=1.
 
+        if this.parent:
+            MonteCarloTreeSearchNode.backpropagate(this.parent, result)
+        return
+   
+    @staticmethod
+    cdef object best_child(object this, double c_param):
+        cdef:
+            MonteCarloTreeSearchNode best = None
+            double best_score = -1000000.0
+            double score 
+            double logownvisits = np.log(this._number_of_visits)
 
+        for c in this.children:
+            score = ((c.wins - c.loses) / c._number_of_visits) + c_param * np.sqrt((2 * logownvisits  / c._number_of_visits))
+            if score > best_score:
+                best_score = score
+                best = c
 
-    def best_child(self, c_param=0.1):
-
-        choices_weights = [(c.q() / c.n()) + c_param * np.sqrt((2 * np.log(self.n()) / c.n())) for c in self.children]
-        return self.children[np.argmax(choices_weights)]
-
-    def rollout_policy(self, possible_moves):
+        return best
     
-        return possible_moves[np.random.randint(len(possible_moves))]
-    
-    def _tree_policy(self):
+    @staticmethod
+    cdef object _tree_policy(object this, double c_param):
+        cdef:
+            object current_node = this
 
-        current_node = self
         while not Board.iswon(current_node.board, current_node.wturn, current_node.qnumber):
             
             if len( current_node._untried_actions) != 0:
-                return current_node.expand()
+                return MonteCarloTreeSearchNode.expand(current_node)
             else:
-                current_node = current_node.best_child()
+                current_node = MonteCarloTreeSearchNode.best_child(current_node, c_param)
+
         return current_node
-    
-    def best_action(self, number=100):
-        simulation_no = number
-        
-        
+
+    @staticmethod
+    cdef long[:,:] best_action(object this, unsigned long simulation_no, double c_param):        
+        cdef:
+            object value
+            short reward
+
         for i in range(simulation_no):
             
-            v = self._tree_policy()
-            reward = v.rollout()
-            v.backpropagate(reward)
+            v = MonteCarloTreeSearchNode._tree_policy(this,c_param)
+            reward = MonteCarloTreeSearchNode.rollout(v)
+            MonteCarloTreeSearchNode.backpropagate(v, reward)
         
-        return self.best_child(c_param=0.1)
+        return MonteCarloTreeSearchNode.best_child(this, c_param).board
 
 cpdef alphabet2num(pos_raw):
     return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
