@@ -7,12 +7,13 @@
 #cython: initializedcheck=False
 
 cimport cython
+import os
 import time
+import copy
 import player
 cimport numpy as np
 import numpy as np
-
-
+import multiprocessing
 #arrow -1
 #empty  0
 #white  1
@@ -21,8 +22,9 @@ import numpy as np
 cdef class Amazons:
     cdef: 
         unsigned short n,white_mode, black_mode
-        list white_init, black_init, player
+        list white_init, black_init
         Board board
+        public list player
 
     def __init__(self, config="config.txt"):
         info = open(config, "r")
@@ -40,7 +42,7 @@ cdef class Amazons:
         while True:
             for n, x in enumerate(self.player):
                 if Board.iswon(self.board.board_view, self.board.wturn, self.board.qnumber):
-                    print("No Moves possible", "black" if n else "white", "lost")
+                   # print("No Moves possible", "black" if n else "white", "lost")
                     return not self.board.wturn
                 if not x:
                     player.player(self.board) 
@@ -50,7 +52,7 @@ cdef class Amazons:
                 else:
                     self.board.board_view [...] = MonteCarloTreeSearchNode.best_action(MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn, None, None),10000, 0.1)
                     self.board.wturn = not self.board.wturn
-                print(self.board)
+               # print(self.board)
 
     def __str__(self):
         return str(self.n) + " " + ["player", "AB", "MCTS"][self.white_mode] + str(self.white_init) + " " + ["player", "AB", "MCTS"][self.black_mode] + str(
@@ -80,11 +82,10 @@ cdef class Board:
         cdef:
             long[:, ::1] result_view = np.zeros(shape=(num,2),dtype=long)
             unsigned short ind = 0
-            Py_ssize_t lenght = a.shape[0]
-            unsigned short x,y
+            Py_ssize_t x,y
 
-        for x in range(lenght):
-            for y in range(lenght):
+        for x in range(a.shape[0]):
+            for y in range(a.shape[0]):
                 if a[x, y]==color:
                     result_view[ind, 0]= x+adder
                     result_view[ind, 1]= y+adder
@@ -132,7 +133,7 @@ cdef class Board:
             long[:,::1] qmove
 
             list ret = []
-            unsigned int i,j,s
+            Py_ssize_t i,j,s
         
         for s in range(qn):
             qmove = Board.get_amazon_moves(board, amazons[s])
@@ -163,6 +164,8 @@ cdef class Board:
             np.ndarray[long, ndim=2] a
             np.ndarray[long, ndim=2] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
             long[:,::1] amazons = Board.get_queen_pos(board, 1 if wturn else 2, qn, 0)
+            Py_ssize_t x
+            unsigned short i
       
         for i in range(qn):
             a = amazons[i]+ops
@@ -212,7 +215,7 @@ cdef class Heuristics:
     @staticmethod
     cdef amazonBFS(long [:,::1] board, long[::1] s, long[:,::1] hboard):
         cdef:
-            unsigned int x
+            Py_ssize_t x
             list movesebene, temp
             list moves = [s]
             long [:,::1] checkboard = np.zeros_like(hboard)
@@ -231,7 +234,7 @@ cdef class Heuristics:
     @staticmethod
     cdef double territorial_eval_heurisic(long[:,::1]board,short token,unsigned short qn):
         cdef:
-            unsigned short a,i,j
+            Py_ssize_t a,i,j
             double ret = 0.0
 
             np.ndarray[long, ndim=2] wboardo = np.full((board.shape[0],board.shape[0]), fill_value=999)
@@ -274,6 +277,7 @@ cdef class Heuristics:
             np.ndarray[long, ndim=1] calcmoves
             unsigned int i,j
             double ret = 0
+            unsigned short s
 
             long[:,::1] amazons = Board.get_queen_pos(board, token, qn,1)
             long[:,::1] boardx_view = boardx
@@ -313,6 +317,7 @@ cdef class AI:
             long[:,::1] best_move
             np.npy_bool wturn = owturn
             unsigned short depth = 2 if MOVES_view.shape[0] > 25 else 4
+            Py_ssize_t i
         
         for i in range(MOVES_view.shape[0]):
 
@@ -360,13 +365,13 @@ cdef class AI:
             double best_score
             long[:, :, ::1] MOVES_view = Board.fast_moves(board, token, qn)
             np.ndarray[long, ndim=1] indicies = np.arange(MOVES_view.shape[0],dtype=int)
-            Py_ssize_t length = indicies.shape[0]
+            Py_ssize_t i
 
         np.random.shuffle(indicies) # randomizer ->>>>>>>>>>>>>>> good speedup somehow
 
         if maximizing:
             best_score = -1000000.0
-            for i in range(length):
+            for i in range(indicies.shape[0]):
 
                 # do move
                 board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = token # unpythonic way .. thanks to cython
@@ -385,7 +390,7 @@ cdef class AI:
         else:
             best_score = 1000000.0
 
-            for i in range(length):
+            for i in range(indicies.shape[0]):
 
                 # move
                 board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = token
@@ -483,6 +488,7 @@ cdef class MonteCarloTreeSearchNode():
             double best_score = -1000000.0
             double score, ratio
             double logownvisits = np.log(this._number_of_visits)
+            object c
 
         for c in this.children:
             # original score
@@ -515,6 +521,7 @@ cdef class MonteCarloTreeSearchNode():
         cdef:
             MonteCarloTreeSearchNode value
             short reward
+            unsigned long i
 
         for i in range(simulation_no):
             
@@ -527,21 +534,40 @@ cdef class MonteCarloTreeSearchNode():
 cpdef alphabet2num(pos_raw):
     return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
 
-cpdef main(times=1,inputfile = "3x3"):
-    cdef unsigned long white = 0
-    cdef unsigned long black = 0
 
-    for _ in range(times):
-        game = Amazons("../configs/config"+inputfile+".txt")
-        print(game.board)
-        stamp = time.time()
-        if(game.game()):
-            white+=1
-        else:
-            black+=1
-        print(time.time()-stamp, "seconds")
-    print("white wins: ", white)
-    print("black wins: ", black)
+def main(times=100,inputfile= "3x3"):
+
+    def temp(i,q, num):
+        cdef Amazons field
+        cdef int f = 0
+        for _ in range(num):    
+            field = Amazons("../configs/config"+"3x3"+".txt")
+            np.random.seed()
+            f += int(field.game())
+        q.put(f)
+
+    print(os.cpu_count(), ": CPU COUNT")
+    countcpu = os.cpu_count()
+    balance = int(times/countcpu)
+    processes =[]
+    q = multiprocessing.Queue()
+    stamp = time.time()
+    for i in range(countcpu):
+        p = multiprocessing.Process(target=temp,args=(str(i),q,balance)) 
+        p.start()
+        processes.append(p)
+    for p in processes:
+        p.join()
+
+    results = [q.get() for j in processes]
+    print(results)
+
+    f = open("res.txt", "w")
+    f.write(str(time.time()-stamp)+"\n"+"white wins: "+str(sum(results))+"\n"+str(times)+"\n\n")
+    f.close()
+
+    #print("white wins: ", white)
+    #print("black wins: ", black)
     #3x3
     #white wins:  73    1
     #black wins:  27    3 10000
@@ -549,5 +575,4 @@ cpdef main(times=1,inputfile = "3x3"):
     #black wins:  9     1
     #59/ 100 MCTS
 
-    
     
