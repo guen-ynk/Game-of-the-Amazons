@@ -6,11 +6,11 @@
 #cython: nonecheck=False
 #cython: initializedcheck=False
 
+cimport cython
 import time
 import player
-import numpy as np
 cimport numpy as np
-cimport cython
+import numpy as np
 
 
 #arrow -1
@@ -22,7 +22,7 @@ cdef class Amazons:
     cdef: 
         unsigned short n,white_mode, black_mode
         list white_init, black_init, player
-        object board
+        Board board
 
     def __init__(self, config="config.txt"):
         info = open(config, "r")
@@ -48,7 +48,7 @@ cdef class Amazons:
                     self.board.board_view = AI.get_ai_move(self.board.board, x, self.board.wturn, self.board.qnumber)
                     self.board.wturn = not self.board.wturn
                 else:
-                    self.board.board_view [...] = MonteCarloTreeSearchNode.best_action(MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn),10000, 0.1)
+                    self.board.board_view [...] = MonteCarloTreeSearchNode.best_action(MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn, None, None),10000, 0.1)
                     self.board.wturn = not self.board.wturn
                 print(self.board)
 
@@ -62,7 +62,7 @@ cdef class Board:
         np.npy_bool wturn 
         unsigned short size, qnumber
         np.ndarray board
-        long[:,:] board_view
+        long[:,::1] board_view
 
     def __init__(self, size, white_init, black_init):
         self.wturn = True
@@ -75,10 +75,10 @@ cdef class Board:
 
    
     @staticmethod # max optimized 
-    cdef long[:,:] get_queen_pos(long[:, :] a,short color, unsigned short num, unsigned short adder):
+    cdef long[:,::1] get_queen_pos(long[:, ::1] a,short color, unsigned short num, unsigned short adder):
     
         cdef:
-            long[:, :] result_view = np.zeros(shape=(num,2),dtype=long)
+            long[:, ::1] result_view = np.zeros(shape=(num,2),dtype=long)
             unsigned short ind = 0
             Py_ssize_t lenght = a.shape[0]
             unsigned short x,y
@@ -95,7 +95,7 @@ cdef class Board:
     
    
     @staticmethod
-    cdef long[:,:] get_amazon_moves(long[:, :] board, long[:] s):
+    cdef long[:,::1] get_amazon_moves(long[:, ::1] board, long[::1] s):
         cdef:
             np.ndarray[long, ndim=2] boardx, ops, sused
             np.ndarray[long, ndim=1] calcmoves
@@ -121,15 +121,15 @@ cdef class Board:
         return np.array(ret)
    
     @staticmethod
-    cdef np.ndarray[long, ndim=3] fast_moves(long[:, :] board, unsigned short token, unsigned short qn):
+    cdef np.ndarray[long, ndim=3] fast_moves(long[:, ::1] board, unsigned short token, unsigned short qn):
         cdef:
             np.ndarray[long, ndim=2] boardx = np.pad(board, 1, "constant", constant_values=-1)  
             np.ndarray[long, ndim=2] ops, sused
             np.ndarray[long, ndim=1] calcmoves
         
-            long[:,:] amazons = Board.get_queen_pos(board, token, qn,1)
-            long[:,:] boardx_view = boardx
-            long[:,:] qmove
+            long[:,::1] amazons = Board.get_queen_pos(board, token, qn,1)
+            long[:,::1] boardx_view = boardx
+            long[:,::1] qmove
 
             list ret = []
             unsigned int i,j,s
@@ -153,16 +153,16 @@ cdef class Board:
                     ops = ops * i
                 boardx_view[amazons[s,0],amazons[s,1]] = boardx_view[qmove[j,0],qmove[j,1]]
                 boardx_view[qmove[j,0],qmove[j,1]] = 0
-        return np.array(ret)
+        return np.asarray(ret)
       
    
     @staticmethod
-    cdef np.npy_bool iswon(long[:, :] board ,np.npy_bool wturn, unsigned short qn):
+    cdef np.npy_bool iswon(long[:, ::1] board ,np.npy_bool wturn, unsigned short qn):
 
         cdef:
             np.ndarray[long, ndim=2] a
             np.ndarray[long, ndim=2] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
-            long[:,:] amazons = Board.get_queen_pos(board, 1 if wturn else 2, qn, 0)
+            long[:,::1] amazons = Board.get_queen_pos(board, 1 if wturn else 2, qn, 0)
       
         for i in range(qn):
             a = amazons[i]+ops
@@ -183,14 +183,14 @@ cdef class Board:
 cdef class Heuristics:
     
     @staticmethod
-    cdef list getMovesInRadius(long[:,:] board,long[:,:] check,long [:] s,unsigned short depth, long[:,:] boardh):
+    cdef list getMovesInRadius(long[:,::1] board,long[:,::1] check,long [::1] s,unsigned short depth, long[:,::1] boardh):
         cdef:
             np.ndarray[long, ndim=2] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]])
             np.ndarray[long, ndim=2] boardx = np.pad(board, 1, "constant", constant_values=-1)  # pad -1 around board for moves beyond range
             unsigned short i = 1
             np.ndarray[long, ndim=2] one_step_each_dir
             np.ndarray[long, ndim=1] fields
-            long[:]y
+            long[::1]y
             list ret = []
 
         while ops.shape[0]>0:
@@ -210,12 +210,12 @@ cdef class Heuristics:
         return ret
     
     @staticmethod
-    cdef amazonBFS(long [:,:] board, long[:] s, long[:,:] hboard):
+    cdef amazonBFS(long [:,::1] board, long[::1] s, long[:,::1] hboard):
         cdef:
             unsigned int x
             list movesebene, temp
             list moves = [s]
-            long [:,:] checkboard = np.zeros_like(hboard)
+            long [:,::1] checkboard = np.zeros_like(hboard)
 
         for x in range(1, board.shape[0] **2):
             movesebene = []
@@ -229,7 +229,7 @@ cdef class Heuristics:
 
     
     @staticmethod
-    cdef double territorial_eval_heurisic(long[:,:]board,short token,unsigned short qn):
+    cdef double territorial_eval_heurisic(long[:,::1]board,short token,unsigned short qn):
         cdef:
             unsigned short a,i,j
             double ret = 0.0
@@ -237,9 +237,9 @@ cdef class Heuristics:
             np.ndarray[long, ndim=2] wboardo = np.full((board.shape[0],board.shape[0]), fill_value=999)
             np.ndarray[long, ndim=2] bboardo = np.full((board.shape[0],board.shape[0]), fill_value=999)
 
-            long [:,:] wboard = wboardo
-            long [:,:] bboard = bboardo
-            long[:,:] amazons = Board.get_queen_pos(board, 1, qn, 1)
+            long [:,::1] wboard = wboardo
+            long [:,::1] bboard = bboardo
+            long [:,::1] amazons = Board.get_queen_pos(board, 1, qn, 1)
 
         for a in range(amazons.shape[0]):
             Heuristics.amazonBFS(board, amazons[a], wboard)
@@ -267,7 +267,7 @@ cdef class Heuristics:
    
     
     @staticmethod
-    cdef double move_count( long[:, :] board, unsigned short token, unsigned short qn):
+    cdef double move_count( long[:, ::1] board, unsigned short token, unsigned short qn):
         cdef:
             np.ndarray[long, ndim=2] boardx = np.pad(board, 1, "constant", constant_values=-1)  
             np.ndarray[long, ndim=2] ops, sused
@@ -275,9 +275,9 @@ cdef class Heuristics:
             unsigned int i,j
             double ret = 0
 
-            long[:,:] amazons = Board.get_queen_pos(board, token, qn,1)
-            long[:,:] boardx_view = boardx
-            long[:,:] qmove
+            long[:,::1] amazons = Board.get_queen_pos(board, token, qn,1)
+            long[:,::1] boardx_view = boardx
+            long[:,::1] qmove
 
         for s in range(qn):
             qmove = Board.get_amazon_moves(board, amazons[s])
@@ -303,14 +303,14 @@ cdef class Heuristics:
 cdef class AI:
    
     @staticmethod
-    cdef long[:,:] get_ai_move(long[:, :] board, int mode, np.npy_bool owturn, unsigned short qnumber):  
+    cdef long[:,::1] get_ai_move(long[:, ::1] board, int mode, np.npy_bool owturn, unsigned short qnumber):  
         cdef:
             double best_score = -1000000.0
             unsigned short token = 1 if owturn else 2
-            long[:, :, :] MOVES_view =  Board.fast_moves(board, token, qnumber)
+            long[:, :, ::1] MOVES_view =  Board.fast_moves(board, token, qnumber)
 
             double score
-            long[:,:] best_move
+            long[:,::1] best_move
             np.npy_bool wturn = owturn
             unsigned short depth = 2 if MOVES_view.shape[0] > 25 else 4
         
@@ -340,7 +340,7 @@ cdef class AI:
     
    
     @staticmethod
-    cdef double alphabeta(long[:, :] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, double a, double b, np.npy_bool maximizing, int mode):
+    cdef double alphabeta(long[:, ::1] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, double a, double b, np.npy_bool maximizing, int mode):
         cdef:
             double heuval
             np.npy_bool token = 1 if wturn else 2
@@ -358,7 +358,7 @@ cdef class AI:
       
         cdef:
             double best_score
-            long[:, :, :] MOVES_view = Board.fast_moves(board, token, qn)
+            long[:, :, ::1] MOVES_view = Board.fast_moves(board, token, qn)
             np.ndarray[long, ndim=1] indicies = np.arange(MOVES_view.shape[0],dtype=int)
             Py_ssize_t length = indicies.shape[0]
 
@@ -407,14 +407,14 @@ cdef class MonteCarloTreeSearchNode():
     cdef public:
         np.npy_bool wturn 
         unsigned short qnumber
-        long[:,:] board
+        long[:,::1] board
         MonteCarloTreeSearchNode parent
         list children, _untried_actions
         long _number_of_visits
         unsigned long wins, loses
-        long [:,:] parent_action
+        long [:,::1] parent_action
 
-    def __init__(self, bv, qn, wt, parent=None, parent_action=None):
+    def __cinit__(self,long[:,::1] bv,unsigned short qn,np.npy_bool wt,MonteCarloTreeSearchNode parent,long [:,::1] parent_action):
         self.board = bv
         self.qnumber = qn
         self.wturn = wt
@@ -427,10 +427,10 @@ cdef class MonteCarloTreeSearchNode():
         self._untried_actions = list(Board.fast_moves(self.board, 1 if self.wturn else 2, self.qnumber))
 
     @staticmethod
-    cdef object expand(object this):
-        cdef long[:,:] oboard = this.board
-        cdef long[:,:] action = this._untried_actions.pop()
-        cdef long[:,:] next_state = np.empty_like(this.board, dtype=long)
+    cdef MonteCarloTreeSearchNode expand(MonteCarloTreeSearchNode this):
+        cdef long[:,::1] oboard = this.board
+        cdef long[:,::1] action = this._untried_actions.pop()
+        cdef long[:,::1] next_state = np.empty_like(this.board, dtype=long)
         next_state[...] = oboard
         next_state[action[1,0],action[1,1]] = 1 if this.wturn else 2
         next_state[action[0,0],action[0,1]] = 0 
@@ -443,11 +443,11 @@ cdef class MonteCarloTreeSearchNode():
         return child_node 
 
     @staticmethod
-    cdef short rollout(object this):
+    cdef short rollout(MonteCarloTreeSearchNode this):
         cdef:
-            long[:,:] oboard = this.board
-            long[:,:] current_rollout_state  = np.empty_like(this.board)
-            long[:,:] action
+            long[:,::1] oboard = this.board
+            long[:,::1] current_rollout_state  = np.empty_like(this.board)
+            long[:,::1] action
             list possible_moves
             np.npy_bool current_wturn = this.wturn
         current_rollout_state [...] = oboard
@@ -465,19 +465,19 @@ cdef class MonteCarloTreeSearchNode():
         return -1 if current_wturn == this.wturn else 1
 
     @staticmethod
-    cdef void backpropagate(object this, short result):
-        this._number_of_visits += 1.
+    cdef void backpropagate(MonteCarloTreeSearchNode this, short result):
+        this._number_of_visits +=1
         if result == 1:
-            this.wins+=1.
+            this.wins+=1
         else:
-            this.loses+=1.
+            this.loses+=1
 
         if this.parent:
             MonteCarloTreeSearchNode.backpropagate(this.parent, result)
         return
    
     @staticmethod
-    cdef object best_child(object this, double c_param):
+    cdef MonteCarloTreeSearchNode best_child(MonteCarloTreeSearchNode this, double c_param):
         cdef:
             MonteCarloTreeSearchNode best = None
             double best_score = -1000000.0
@@ -497,9 +497,9 @@ cdef class MonteCarloTreeSearchNode():
         return best
     
     @staticmethod
-    cdef object _tree_policy(object this, double c_param):
+    cdef MonteCarloTreeSearchNode tree_policy(MonteCarloTreeSearchNode this, double c_param):
         cdef:
-            object current_node = this
+            MonteCarloTreeSearchNode current_node = this
 
         while not Board.iswon(current_node.board, current_node.wturn, current_node.qnumber):
             
@@ -511,14 +511,14 @@ cdef class MonteCarloTreeSearchNode():
         return current_node
 
     @staticmethod
-    cdef long[:,:] best_action(object this, unsigned long simulation_no, double c_param):        
+    cdef long[:,::1] best_action(MonteCarloTreeSearchNode this, unsigned long simulation_no, double c_param):        
         cdef:
-            object value
+            MonteCarloTreeSearchNode value
             short reward
 
         for i in range(simulation_no):
             
-            v = MonteCarloTreeSearchNode._tree_policy(this,c_param)
+            v = MonteCarloTreeSearchNode.tree_policy(this,c_param)
             reward = MonteCarloTreeSearchNode.rollout(v)
             MonteCarloTreeSearchNode.backpropagate(v, reward)
         
