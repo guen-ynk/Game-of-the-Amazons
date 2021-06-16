@@ -565,7 +565,7 @@ def main(times=100,inputfile= "3x3",A=1,B=1,MCTS=10000):
     print(results)
 
     f = open("res.txt", "a")
-    f.write(str(time.time()-stamp)+"\n"+"white wins: "+str(sum(results))+"\n"+str(times)+ "A: "+str(B)+"A: "+str(B)+"MCTS: "+str(MCTS)+"\n\n")
+    f.write(str(time.time()-stamp)+"\n"+"white wins: "+str(sum(results))+"\n"+str(times)+ "A: "+str(A)+"B: "+str(B)+"MCTS: "+str(MCTS)+"\n\n")
     f.close()
 
     #print("white wins: ", white)
