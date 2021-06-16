@@ -25,8 +25,9 @@ cdef class Amazons:
         list white_init, black_init
         Board board
         public list player
+        int MCTS
 
-    def __init__(self, config="config.txt"):
+    def __init__(self, config="config.txt", A=1,B=1,MCTS=10000):
         info = open(config, "r")
         self.n = int(info.readline())
         white = info.readline().split(":")
@@ -35,8 +36,9 @@ cdef class Amazons:
         black = info.readline().split(":")
         self.black_mode = int(black[0])
         self.black_init = list(map(alphabet2num, black[1].split()))
-        self.player = [self.white_mode, self.black_mode]
+        self.player = [A,B]
         self.board = Board(self.n, self.white_init, self.black_init)
+        self.MCTS = MCTS
 
     def game(self):
         while True:
@@ -50,7 +52,7 @@ cdef class Amazons:
                     self.board.board_view = AI.get_ai_move(self.board.board, x, self.board.wturn, self.board.qnumber)
                     self.board.wturn = not self.board.wturn
                 else:
-                    self.board.board_view [...] = MonteCarloTreeSearchNode.best_action(MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn, None, None),10000, 0.1)
+                    self.board.board_view [...] = MonteCarloTreeSearchNode.best_action(MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn, None, None),self.MCTS, 0.1)
                     self.board.wturn = not self.board.wturn
                # print(self.board)
 
@@ -535,13 +537,13 @@ cpdef alphabet2num(pos_raw):
     return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
 
 
-def main(times=100,inputfile= "3x3"):
+def main(times=100,inputfile= "3x3",A=1,B=1,MCTS=10000):
 
-    def temp(i,q, num):
+    def temp(i,q, num,A,B,MCTS):
         cdef Amazons field
         cdef int f = 0
         for _ in range(num):    
-            field = Amazons("../configs/config"+"3x3"+".txt")
+            field = Amazons("../configs/config"+"3x3"+".txt",A,B,MCTS)
             np.random.seed()
             f += int(field.game())
         q.put(f)
@@ -553,7 +555,7 @@ def main(times=100,inputfile= "3x3"):
     q = multiprocessing.Queue()
     stamp = time.time()
     for i in range(countcpu):
-        p = multiprocessing.Process(target=temp,args=(str(i),q,balance)) 
+        p = multiprocessing.Process(target=temp,args=(str(i),q,balance,A,B,MCTS)) 
         p.start()
         processes.append(p)
     for p in processes:
@@ -562,8 +564,8 @@ def main(times=100,inputfile= "3x3"):
     results = [q.get() for j in processes]
     print(results)
 
-    f = open("res.txt", "w")
-    f.write(str(time.time()-stamp)+"\n"+"white wins: "+str(sum(results))+"\n"+str(times)+"\n\n")
+    f = open("res.txt", "a")
+    f.write(str(time.time()-stamp)+"\n"+"white wins: "+str(sum(results))+"\n"+str(times)+ "A: "+str(B)+"A: "+str(B)+"MCTS: "+str(MCTS)+"\n\n")
     f.close()
 
     #print("white wins: ", white)
@@ -575,4 +577,8 @@ def main(times=100,inputfile= "3x3"):
     #black wins:  9     1
     #59/ 100 MCTS
 
+
+#75.7377610206604
+#white wins: 94
+#100
     
