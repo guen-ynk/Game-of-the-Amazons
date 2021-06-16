@@ -539,11 +539,11 @@ cpdef alphabet2num(pos_raw):
 
 def main(times=100,inputfile= "3x3",A=1,B=1,MCTS=10000):
 
-    def temp(i,q, num,A,B,MCTS):
+    def temp(i,q,inputfile, num,A,B,MCTS):
         cdef Amazons field
         cdef int f = 0
         for _ in range(num):    
-            field = Amazons("../configs/config"+"3x3"+".txt",A,B,MCTS)
+            field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS)
             np.random.seed()
             f += int(field.game())
         q.put(f)
@@ -555,7 +555,7 @@ def main(times=100,inputfile= "3x3",A=1,B=1,MCTS=10000):
     q = multiprocessing.Queue()
     stamp = time.time()
     for i in range(countcpu):
-        p = multiprocessing.Process(target=temp,args=(str(i),q,balance,A,B,MCTS)) 
+        p = multiprocessing.Process(target=temp,args=(str(i),q,inputfile,balance,A,B,MCTS)) 
         p.start()
         processes.append(p)
     for p in processes:
