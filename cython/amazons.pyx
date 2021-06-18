@@ -60,7 +60,7 @@ cdef class Amazons:
         while True:
             for n, x in enumerate(self.player):
                 if Board.iswon(self.board.board_view, self.board.wturn, self.board.qnumber, ops):
-                    #print("No Moves possible", "black" if n else "white", "lost")
+                    print("No Moves possible", "black" if n else "white", "lost")
                     return not self.board.wturn
                 if not x:
                     player.player(self.board) 
@@ -70,7 +70,7 @@ cdef class Amazons:
                 else:
                     self.board.board_view [...] = MonteCarloTreeSearchNode.best_action(MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn, None, None),self.MCTS, 0.1,ops)
                     self.board.wturn = not self.board.wturn
-                #print(self.board)
+                print(self.board)
 
     def __str__(self):
         return str(self.n) + " " + ["player", "AB", "MCTS"][self.white_mode] + str(self.white_init) + " " + ["player", "AB", "MCTS"][self.black_mode] + str(
@@ -864,9 +864,15 @@ cdef class MonteCarloTreeSearchNode():
 cpdef alphabet2num(pos_raw):
     return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
 
+def test(times=1,inputfile= "3x3",A=1,B=1,MCTS=10000):
+    stamp = time.time()
+    field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS)
+    field.game()
+    print(str(time.time()-stamp))
+    return
 
 def main(times=100,inputfile= "3x3",A=1,B=1,MCTS=10000):
-  
+
 
     def temp(i,q,inputfile, num,A,B,MCTS):
         cdef Amazons field
