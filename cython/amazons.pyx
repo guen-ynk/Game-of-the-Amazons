@@ -7,20 +7,13 @@
 #cython: initializedcheck=False
 
 cimport cython
-import os
-import time
-import player
-import math
-cimport numpy as np
+from libc.stdlib cimport malloc, free, rand, srand
 import numpy as np
+cimport numpy as np
+from libc.math cimport sqrt, log
 import multiprocessing
-from libc.math cimport sqrt
-#arrow -1
-#empty  0
-#white  1
-#black  2
-cdef extern from "math.h":
-    double log(double x) nogil  
+from cython.parallel import prange
+from libc.time cimport time,time_t
 
 DTYPE = np.float64
 ctypedef np.float64_t DTYPE_t
@@ -31,6 +24,51 @@ cdef DTYPE_t calculateUCB(DTYPE_t winsown, DTYPE_t countown, DTYPE_t winschild, 
             DTYPE_t visits_log = log(countown)
             DTYPE_t wurzel = sqrt((visits_log/countchild) * min(0.25, ratio_kid-(ratio_kid*ratio_kid), sqrt(2*visits_log/countchild)) )
         return (ratio_kid + wurzel)
+
+ctypedef struct _LinkedListStruct:
+    Py_ssize_t x,y
+    _LinkedListStruct*next   
+
+
+ctypedef struct _MovesStruct:
+    Py_ssize_t sx,sy,dx,dy,ax,ay,length
+    _MovesStruct*next   
+   
+
+cdef _LinkedListStruct* add(_LinkedListStruct* _head, Py_ssize_t x, Py_ssize_t y) nogil: 
+        cdef _LinkedListStruct*obj = <_LinkedListStruct*> malloc(sizeof(_LinkedListStruct))
+        
+        obj.x = x
+        obj.y = y
+        obj.next = NULL 
+
+        if _head is NULL:
+            _head = obj
+            return _head
+        else:
+            obj.next = _head
+            return obj
+
+cdef _MovesStruct* push(_MovesStruct* _head, Py_ssize_t sx,Py_ssize_t sy,Py_ssize_t dx,Py_ssize_t dy,Py_ssize_t ax,Py_ssize_t ay )nogil: 
+        cdef _MovesStruct*obj = <_MovesStruct*> malloc(sizeof(_MovesStruct))
+       
+        obj.sx = sx
+        obj.sy = sy
+        obj.dx = dx
+        obj.dy = dy
+        obj.ax = ax
+        obj.ay = ay
+        obj.length = 0
+        obj.next = NULL 
+
+        if _head is NULL:
+            _head = obj
+            _head.length = 1
+            return _head
+        else:
+            obj.next = _head
+            obj.length = _head.length+1
+            return obj
 
 cdef class Amazons:
     cdef: 
@@ -55,27 +93,27 @@ cdef class Amazons:
 
     def game(self):
         cdef:
-            np.ndarray[short, ndim=2] opso = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]],dtype=np.short)
-            short [:,::1] ops = opso
+            short [:,::1] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]],dtype=np.short)
+            short token
+            Py_ssize_t bsize = self.board.board.shape[0]
+            short [:,::1] checkboard = np.zeros((bsize,bsize), dtype=np.short)
+            short [:,::1] wboard = np.full((bsize,bsize), fill_value=999, dtype=np.short)  
+            short [:,::1] bboard = np.full((bsize,bsize), fill_value=999, dtype=np.short)
         while True:
             for n, x in enumerate(self.player):
-                if Board.iswon(self.board.board_view, self.board.wturn, self.board.qnumber, ops):
-                    print("No Moves possible", "black" if n else "white", "lost")
+                token = 1 if self.board.wturn else 2
+                if Board.iswon(self.board.board_view, token, self.board.qnumber, ops):
+                    print(self.board)
                     return not self.board.wturn
-                if not x:
-                    player.player(self.board) 
-                elif x==1 or x==2:
-                    self.board.board_view = AI.get_ai_move(self.board.board, x, self.board.wturn, self.board.qnumber, ops)
+                #if not x:
+                 #   player.player(self.board) 
+                #el
+                if x==1 or x==2:
+                    AI.get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, checkboard, wboard, bboard)
                     self.board.wturn = not self.board.wturn
                 else:
-                    self.board.board_view [...] = MonteCarloTreeSearchNode.best_action(MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn, None, None),self.MCTS, 0.1,ops)
+                    self.board.board_view [...] = MonteCarloTreeSearchNode.best_action(MonteCarloTreeSearchNode(self.board.board, self.board.qnumber, self.board.wturn, None),self.MCTS, 0.1,ops)
                     self.board.wturn = not self.board.wturn
-                print(self.board)
-
-    def __str__(self):
-        return str(self.n) + " " + ["player", "AB", "MCTS"][self.white_mode] + str(self.white_init) + " " + ["player", "AB", "MCTS"][self.black_mode] + str(
-            self.black_init) + "\n" + str(self.board)
-
 
 cdef class Board:
     cdef public:
@@ -93,239 +131,235 @@ cdef class Board:
         self.board[tuple(zip(*black_init))] = 2       
         self.board_view = self.board
 
-   
     @staticmethod # max optimized 
-    cdef short[:,::1] get_queen_pos(short[:, ::1] a,short color, unsigned short num, unsigned short adder):
-      #  print(np.asarray(a))
+    cdef _LinkedListStruct* get_queen_posn(short[:, ::1] a,short color, unsigned short num) nogil:
         cdef:
-            short[:, ::1] result_view = np.empty(shape=(num,2),dtype=np.short)
             unsigned short ind = 0
-            size_t x,y,leng
+            Py_ssize_t x,y,leng
+            _LinkedListStruct* _head = NULL
         leng = a.shape[0]
 
         for x in range(leng):
             for y in range(leng):
                 if a[x, y]==color:
-                    result_view[ind, 0]= x+adder
-                    result_view[ind, 1]= y+adder
+                    _head = add(_head,x,y)
                     ind+=1
                     if ind==num:
-                        return result_view
-
+                        return _head
+                        
     
-   
     @staticmethod
-    cdef short[:,::1] get_amazon_moves(short[:, ::1] board, short[::1] s, short[:,::1] boardx):
+    cdef _LinkedListStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*s, _LinkedListStruct* head) nogil: # 100%  optimized
         cdef:
-            list ret = []
-            Py_ssize_t x, lengthb
-            unsigned short y
-           # short [:,::1] boardx = np.pad(board, 1, "constant", constant_values=-1)  
-
-        lengthb = boardx.shape[0]
-        for y in range(1,lengthb): # hardcode thanks to cython north 
-            s[0]-=1
-            if boardx[s[0],s[1]]==0:
-                ret.append(np.array(s))
-            else:
-                s[0]+=y
-                break
-             
-        for y in range(1,lengthb): # hardcode thanks to cython south
-            s[0]+= 1
-            if boardx[s[0],s[1]]==0:
-                ret.append(np.array(s))
-            else:
-                s[0]-=y
-                break
-             
-        for y in range(1,lengthb): # hardcode thanks to cython left
-            s[1]-= 1
-           # if 0 <= s[1] < lengthb:
-            if boardx[s[0],s[1]]==0:
-                ret.append(np.array(s))
-            else:
-                s[1]+=y
-                break
-             
-        for y in range(1,lengthb): # hardcode thanks to cython  right
-            s[1]+= 1
-            if boardx[s[0],s[1]]==0:
-                ret.append(np.array(s))
-            else:
-                s[1]-=y
-                break
-            
-        for y in range(1,lengthb): # hardcode thanks to cython  south left
-                    s[0]-= 1
-                    s[1]-= 1
-                    if boardx[s[0],s[1]]==0:
-                        ret.append(np.array(s))
-                    else:
-                        s[0]+=y
-                        s[1]+=y
-                        break
-                    
-         
-        for y in range(1,lengthb): # hardcode thanks to cython  south right
-                    s[0]-= 1
-                    s[1]+= 1
-                    if boardx[s[0],s[1]]==0:
-                        ret.append(np.array(s))
-                    else:
-                        s[0]+=y
-                        s[1]-=y
-                        break
-         
-        for y in range(1,lengthb): # hardcode thanks to cython  north left
-                    s[0]+= 1
-                    s[1]-= 1
-                    if boardx[s[0],s[1]]==0:
-                        ret.append(np.array(s))
-                    else:
-                        s[0]-=y
-                        s[1]+=y
-                        break
-              
-        for y in range(1,lengthb): # hardcode thanks to cython  north right
-                    s[0]+= 1
-                    s[1]+= 1
-                    if boardx[s[0],s[1]]==0:
-                        ret.append(np.array(s))
-                    else:
-                        s[0]-=y
-                        s[1]-=y
-                        break
-        if len(ret)==0:
-            return None
-        return np.asarray(ret)
+            Py_ssize_t lengthb
+            Py_ssize_t y,xi,yi
        
+        xi = s.x
+        yi = s.y
+      
+        lengthb = boardx.shape[0]
+        for y in range(xi-1,-1,-1): # hardcode thanks to cython north 
+            if boardx[y,yi]==0:
+                head= add(head, y, yi)
+            else:
+                break
+             
+        for y in range(xi+1,lengthb): # hardcode thanks to cython south
+            if boardx[y,yi]==0:
+                head= add(head, y, yi)
+            else:
+                break
+        
+        for y in range(yi-1,-1,-1): # hardcode thanks to cython left
+            if boardx[xi,y]==0:
+                head= add(head, xi, y)
+            else:
+                break
+             
+        for y in range(yi+1,lengthb): # hardcode thanks to cython  right
+            if boardx[xi,y]==0:
+                head= add(head, xi, y)
+            else:
+                break
+        for y in range(1,lengthb): # hardcode thanks to cython  south left
+                    s.x-= 1
+                    s.y-= 1
+                    if s.x>=0 and s.y>=0 and boardx[s.x,s.y]==0:
+                        head= add(head, s.x, s.y)
+                    else:
+                        break
+                    
+        s.x=xi
+        s.y=yi
+        for y in range(1,lengthb): # hardcode thanks to cython  south right
+                    s.x-= 1
+                    s.y+= 1
+                    if s.x>=0 and s.y<lengthb and boardx[s.x,s.y]==0:
+                        head= add(head, s.x, s.y)
+                    else:
+                        break
+        s.x=xi
+        s.y=yi
+        for y in range(1,lengthb): # hardcode thanks to cython  north left
+                    s.x+= 1
+                    s.y-= 1
+                    if s.y>=0 and s.x<lengthb and boardx[s.x,s.y]==0:
+                        head= add(head, s.x, s.y)
+                    else:
+                        break
+        s.x=xi
+        s.y=yi             
+        for y in range(1,lengthb): # hardcode thanks to cython  north right
+                    s.x+= 1
+                    s.y+= 1
+                    if s.x<lengthb and s.y<lengthb and boardx[s.x,s.y]==0:
+                        head= add(head, s.x, s.y)
+                    else:
+                        break
+        s.x=xi
+        s.y=yi
+        return  head
    
     @staticmethod
-    cdef np.ndarray[short, ndim=3] fast_moves(short[:, ::1] board, unsigned short token, unsigned short qn):
+    cdef _MovesStruct* fast_moves(short[:, ::1] board, unsigned short token, unsigned short qn) nogil:
         cdef:
-            np.ndarray[short, ndim=2] boardx = np.pad(board, 1, "constant", constant_values=-1)  
-            short[:,::1] amazons = Board.get_queen_pos(board, token, qn,1)
-            short[:,::1] boardx_view = boardx
-            short[:,::1] qmove
-            short[::1] qmoveo = np.empty((2),dtype=np.short)
-
-            Py_ssize_t j,s,x, lengthb
-            list ret = []
+            _MovesStruct*_top = NULL
+            _LinkedListStruct*_queenshead =  Board.get_queen_posn(board, token, qn)
+            Py_ssize_t s, lengthb,dx,dy,sx,sy
             unsigned short y
+            _LinkedListStruct*_head = NULL
+            _LinkedListStruct*ptr = NULL
+             
+       
+        lengthb = board.shape[0]
+     
+        while _queenshead is not NULL:
+           
+            _head = Board.get_amazon_moves(board, _queenshead, _head)
+            while _head is not NULL:
 
-        lengthb = boardx.shape[0]
+                sx=_head.x
+                sy=_head.y
 
-        for s in range(qn):
-            qmove = Board.get_amazon_moves(board, amazons[s], boardx_view)
-            if qmove is None:
-                continue
-            for j in range(qmove.shape[0]):
-                qmoveo[...] = qmove[j]
+                dx = sx
+                dy = sy
+
                 # move 
-                boardx_view[qmove[j,0],qmove[j,1]] = boardx_view[amazons[s,0],amazons[s,1]]
-                boardx_view[amazons[s,0],amazons[s,1]] = 0
-    
+                board[_head.x,_head.y] = board[_queenshead.x,_queenshead.y ]
+                board[_queenshead.x,_queenshead.y ] = 0
                 for y in range(1,lengthb): # hardcode thanks to cython north 
-                    qmove[j,0]-=1
-                    if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                        ret.append(np.array([amazons[s],qmoveo, qmove[j]])-1)
+                    sx-=1
+                    if sx>=0 and board[sx,sy]==0:
+                        _top = push(_top,_queenshead.x,_queenshead.y,dx,dy,sx,sy)
                     else:
-                        qmove[j,0]+=y
                         break
                     
+                sx=_head.x    
                 for y in range(1,lengthb): # hardcode thanks to cython south
-                    qmove[j,0]+= 1
-                    if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                        ret.append(np.array([amazons[s],qmoveo, qmove[j]])-1)
+                    sx+= 1
+                    if sx < lengthb and board[sx,sy]==0:
+                        _top = push(_top,_queenshead.x,_queenshead.y,dx,dy,sx,sy)
                     else:
-                        qmove[j,0]-=y
                         break
-                    
+
+                sx=_head.x    
                 for y in range(1,lengthb): # hardcode thanks to cython left
-                    qmove[j,1]-= 1
-                # if 0 <= qmove[j,1] < lengthb:
-                    if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                        ret.append(np.array([amazons[s],qmoveo, qmove[j]])-1)
+                    sy-= 1
+                    if sy >= 0 and board[sx,sy]==0:
+                        _top = push(_top,_queenshead.x,_queenshead.y,dx,dy,sx,sy)
                     else:
-                        qmove[j,1]+=y
                         break
-                    
+
+                sy=_head.y    
                 for y in range(1,lengthb): # hardcode thanks to cython  right
-                    qmove[j,1]+= 1
-                    if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                        ret.append(np.array([amazons[s],qmoveo, qmove[j]])-1)
+                    sy+= 1
+                    if sy < lengthb and board[sx,sy]==0:
+                        _top = push(_top,_queenshead.x,_queenshead.y,dx,dy,sx,sy)
                     else:
-                        qmove[j,1]-=y
                         break
-                    
+
+                sy=_head.y    
                 for y in range(1,lengthb): # hardcode thanks to cython  south left
-                            qmove[j,0]-= 1
-                            qmove[j,1]-= 1
-                            if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                                ret.append(np.array([amazons[s],qmoveo, qmove[j]])-1)
+                            sx-= 1
+                            sy-= 1
+                            if sx >= 0 and sy >= 0 and board[sx,sy]==0:
+                                _top = push(_top,_queenshead.x,_queenshead.y,dx,dy,sx,sy)
                             else:
-                                qmove[j,0]+=y
-                                qmove[j,1]+=y
                                 break
-                            
+                sx=_head.x
+                sy=_head.y           
                 for y in range(1,lengthb): # hardcode thanks to cython  south right
-                            qmove[j,0]-= 1
-                            qmove[j,1]+= 1
-                            if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                                ret.append(np.array([amazons[s],qmoveo, qmove[j]])-1)
+                            sx-= 1
+                            sy+= 1
+                            if sx >= 0 and sy < lengthb and board[sx,sy]==0:
+                                _top = push(_top,_queenshead.x,_queenshead.y,dx,dy,sx,sy)
                             else:
-                                qmove[j,0]+=y
-                                qmove[j,1]-=y
                                 break
-                
+                sx=_head.x
+                sy=_head.y
                 for y in range(1,lengthb): # hardcode thanks to cython  north left
-                            qmove[j,0]+= 1
-                            qmove[j,1]-= 1
-                            if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                                ret.append(np.array([amazons[s],qmoveo, qmove[j]])-1)
+                            sx+= 1
+                            sy-= 1
+                            if sx<lengthb and sy >= 0 and board[sx,sy]==0:
+                                _top = push(_top,_queenshead.x,_queenshead.y,dx,dy,sx,sy)
                             else:
-                                qmove[j,0]-=y
-                                qmove[j,1]+=y
                                 break
-                    
+                sx=_head.x
+                sy=_head.y
                 for y in range(1,lengthb): # hardcode thanks to cython  north right
-                            qmove[j,0]+= 1
-                            qmove[j,1]+= 1
-                            if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                                ret.append(np.array([amazons[s],qmoveo, qmove[j]])-1)
+                            sx+= 1
+                            sy+= 1
+                            if sx < lengthb and sy < lengthb and board[sx,sy]==0:
+                                _top = push(_top,_queenshead.x,_queenshead.y,dx,dy,sx,sy)
                             else:
-                                qmove[j,0]-=y
-                                qmove[j,1]-=y
                                 break
 
                 # undo queen move
-                boardx_view[amazons[s,0],amazons[s,1]] = boardx_view[qmove[j,0],qmove[j,1]]
-                boardx_view[qmove[j,0],qmove[j,1]] = 0
-
-        return np.asarray(ret)
+                board[_queenshead.x,_queenshead.y ] = board[_head.x,_head.y]
+                board[_head.x,_head.y] = 0
+                ptr = _head
+                _head = _head.next
+                free(ptr)
+            ptr = _queenshead
+            _queenshead = _queenshead.next
+            free(ptr)
+        
+        return _top
       
-      
+    
    
     @staticmethod
-    cdef np.npy_bool iswon(short[:, ::1] board ,np.npy_bool wturn, unsigned short qn, short [:,::1] ops):
+    cdef np.npy_bool iswon(short[:, ::1] board ,short token, unsigned short qn, short [:,::1] ops)nogil:
 
-        cdef:
-            short[:,::1] amazons = Board.get_queen_pos(board, 1 if wturn else 2, qn, 0)
+        cdef:           
             Py_ssize_t x,leng,i,opsl
+            _LinkedListStruct*_queenshead =  Board.get_queen_posn(board, token, qn)
+            _LinkedListStruct*_ptr
 
+       
         opsl = 8
+        i=0
         leng = board.shape[0]
-        for i in range(amazons.shape[0]):
-            for x in range(opsl):
-                amazons[i,0]+=ops[x,0]
-                amazons[i,1]+=ops[x,1]
 
-                if 0 <= amazons[i,0] < leng and 0 <= amazons[i,1] < leng:
-                    if board[amazons[i,0], amazons[i,1]] == 0:
+        while _queenshead is not NULL:
+            for x in range(opsl):
+                _queenshead.x+=ops[x,0]
+                _queenshead.y+=ops[x,1]
+
+                if 0 <= _queenshead.x < leng and 0 <= _queenshead.y < leng:
+                    if board[_queenshead.x, _queenshead.y] == 0:
+                        while _queenshead is not NULL:
+                            _ptr = _queenshead
+                            _queenshead = _queenshead.next
+                            free(_ptr)
                         return False
-                amazons[i,0]-=ops[x,0]
-                amazons[i,1]-=ops[x,1]
+                _queenshead.x-=ops[x,0]
+                _queenshead.y-=ops[x,1]
+            i+=1
+            _ptr = _queenshead
+            _queenshead = _queenshead.next
+            free(_ptr)
+
         return True
 
     def __str__(self):
@@ -336,399 +370,434 @@ cdef class Board:
 cdef class Heuristics:
     
     @staticmethod
-    cdef list getMovesInRadius(short[:,::1] board,short[:,::1] check,short [::1] s,unsigned short depth, short[:,::1] boardh):
+    cdef void getMovesInRadius(short[:,::1] boardx,short[:,::1] check, _LinkedListStruct* ptr ,unsigned short depth, short[:,::1] boardh,_LinkedListStruct*_head) nogil:
         cdef:
-            list ret = []
-            Py_ssize_t x, lengthb
-            unsigned short y
-            short [:,::1] boardx = np.pad(board, 1, "constant", constant_values=-1)  
-
+            Py_ssize_t lengthb,y, xi,yi
         lengthb = boardx.shape[0]
-        for y in range(1,lengthb): # hardcode thanks to cython north 
-            s[0]-=1
-            if boardx[s[0],s[1]]==0:
-                if not check[s[0]-1,s[1]-1]:
-                        boardh[s[0]-1,s[1]-1] = min(
-                            boardh[s[0]-1,s[1]-1],
+        xi = ptr.x
+        yi = ptr.y
+   
+        for y in range(xi-1,-1,-1): # hardcode thanks to cython north 
+            if boardx[y,yi]==0 and check[y,yi]==0:
+                        boardh[y,yi] = min(
+                            boardh[y,yi],
                             depth
                         )
-                        check[s[0]-1,s[1]-1] = 1
-                        ret.append(s)
+                        check[y,yi] = 1
+                        _head= add(_head, y, yi)
             else:
-                s[0]+=y
                 break
-             
-        for y in range(1,lengthb): # hardcode thanks to cython south
-            s[0]+= 1
-            if boardx[s[0],s[1]]==0:
-                if not check[s[0]-1,s[1]-1]:
-                        boardh[s[0]-1,s[1]-1] = min(
-                            boardh[s[0]-1,s[1]-1],
+        for y in range(xi+1,lengthb): # hardcode thanks to cython south
+            if boardx[y,yi]==0 and check[y,yi]==0:
+                        boardh[y,yi] = min(
+                            boardh[y,yi],
                             depth
                         )
-                        check[s[0]-1,s[1]-1] = 1
-                        ret.append(s)
+                        check[y,yi] = 1
+                        _head= add(_head, y, yi)
             else:
-                s[0]-=y
                 break
-             
-        for y in range(1,lengthb): # hardcode thanks to cython left
-            s[1]-= 1
-           # if 0 <= s[1] < lengthb:
-            if boardx[s[0],s[1]]==0:
-                if not check[s[0]-1,s[1]-1]:
-                        boardh[s[0]-1,s[1]-1] = min(
-                            boardh[s[0]-1,s[1]-1],
+        for y in range(yi-1,-1,-1): # hardcode thanks to cython left
+            if boardx[xi,y]==0 and check[xi,y]==0:
+                        boardh[xi,y] = min(
+                            boardh[xi,y],
                             depth
                         )
-                        check[s[0]-1,s[1]-1] = 1
-                        ret.append(s)
+                        check[xi,y] = 1
+                        _head= add(_head, xi,y)
             else:
-                s[1]+=y
                 break
-             
-        for y in range(1,lengthb): # hardcode thanks to cython  right
-            s[1]+= 1
-            if boardx[s[0],s[1]]==0:
-                if not check[s[0]-1,s[1]-1]:
-                        boardh[s[0]-1,s[1]-1] = min(
-                            boardh[s[0]-1,s[1]-1],
+
+        for y in range(yi+1,lengthb): # hardcode thanks to cython  right
+            if boardx[xi,y]==0 and check[xi,y]==0:
+                        boardh[xi,y] = min(
+                            boardh[xi,y],
                             depth
                         )
-                        check[s[0]-1,s[1]-1] = 1
-                        ret.append(s)
+                        check[xi,y] = 1
+                        _head= add(_head, xi,y)
             else:
-                s[1]-=y
                 break
-            
+       
         for y in range(1,lengthb): # hardcode thanks to cython  south left
-                    s[0]-= 1
-                    s[1]-= 1
-                    if boardx[s[0],s[1]]==0:
-                        if not check[s[0]-1,s[1]-1]:
-                            boardh[s[0]-1,s[1]-1] = min(
-                                boardh[s[0]-1,s[1]-1],
-                                depth
-                            )
-                            check[s[0]-1,s[1]-1] = 1
-                            ret.append(s)
+                    ptr.x-= 1
+                    ptr.y-= 1
+                    if ptr.x>=0 and ptr.y>=0 and boardx[ptr.x,ptr.y]==0 and check[ptr.x, ptr.y]==0:
+                        boardh[ptr.x, ptr.y] = min(
+                            boardh[ptr.x, ptr.y],
+                            depth
+                        )
+                        check[ptr.x, ptr.y] = 1
+                        _head= add(_head, ptr.x, ptr.y)
                     else:
-                        s[0]+=y
-                        s[1]+=y
                         break
                     
-         
+        ptr.x=xi
+        ptr.y=yi
         for y in range(1,lengthb): # hardcode thanks to cython  south right
-                    s[0]-= 1
-                    s[1]+= 1
-                    if boardx[s[0],s[1]]==0:
-                        if not check[s[0]-1,s[1]-1]:
-                            boardh[s[0]-1,s[1]-1] = min(
-                                boardh[s[0]-1,s[1]-1],
-                                depth
-                            )
-                            check[s[0]-1,s[1]-1] = 1
-                            ret.append(s)
+                    ptr.x-= 1
+                    ptr.y+= 1
+                    if ptr.x>=0 and ptr.y<lengthb and boardx[ptr.x,ptr.y]==0 and check[ptr.x, ptr.y]==0:
+                        boardh[ptr.x, ptr.y] = min(
+                            boardh[ptr.x, ptr.y],
+                            depth
+                        )
+                        check[ptr.x, ptr.y] = 1
+                        _head= add(_head, ptr.x, ptr.y)
                     else:
-                        s[0]+=y
-                        s[1]-=y
                         break
-         
+        ptr.x=xi
+        ptr.y=yi
         for y in range(1,lengthb): # hardcode thanks to cython  north left
-                    s[0]+= 1
-                    s[1]-= 1
-                    if boardx[s[0],s[1]]==0:
-                        if not check[s[0]-1,s[1]-1]:
-                            boardh[s[0]-1,s[1]-1] = min(
-                                boardh[s[0]-1,s[1]-1],
-                                depth
-                            )
-                            check[s[0]-1,s[1]-1] = 1
-                            ret.append(s)
+                    ptr.x+= 1
+                    ptr.y-= 1
+                    if ptr.y>=0 and ptr.x<lengthb and boardx[ptr.x,ptr.y]==0 and check[ptr.x, ptr.y]==0:
+                        boardh[ptr.x, ptr.y] = min(
+                            boardh[ptr.x, ptr.y],
+                            depth
+                        )
+                        check[ptr.x, ptr.y] = 1
+                        _head= add(_head, ptr.x, ptr.y)
                     else:
-                        s[0]-=y
-                        s[1]+=y
                         break
-              
+        ptr.x=xi
+        ptr.y=yi             
         for y in range(1,lengthb): # hardcode thanks to cython  north right
-                    s[0]+= 1
-                    s[1]+= 1
-                    if boardx[s[0],s[1]]==0:
-                        if not check[s[0]-1,s[1]-1]:
-                            boardh[s[0]-1,s[1]-1] = min(
-                                boardh[s[0]-1,s[1]-1],
-                                depth
-                            )
-                            check[s[0]-1,s[1]-1] = 1
-                            ret.append(s)
+                    ptr.x+= 1
+                    ptr.y+= 1
+                    if ptr.x<lengthb and ptr.y<lengthb and boardx[ptr.x,ptr.y]==0 and check[ptr.x, ptr.y]==0:
+                        boardh[ptr.x, ptr.y] = min(
+                            boardh[ptr.x, ptr.y],
+                            depth
+                        )
+                        check[ptr.x, ptr.y] = 1
+                        _head= add(_head, ptr.x, ptr.y)
                     else:
-                        s[0]-=y
-                        s[1]-=y
                         break
-
-        return ret
+        ptr.x=xi
+        ptr.y=yi
+        return  
     
     @staticmethod
-    cdef amazonBFS(short [:,::1] board, short[::1] s, short[:,::1] hboard):
+    cdef void amazonBFS(short [:,::1] board, _LinkedListStruct*s, short[:,::1] hboard, short[:,::1] checkboard) nogil:
         cdef:
-            Py_ssize_t x,n,m
-            list movesebene, temp
-            list moves = [s]
-            short [:,::1] checkboard = np.zeros_like(hboard)
+            Py_ssize_t x,xx, length,dl
+            _LinkedListStruct* _head = NULL
+            _LinkedListStruct* _ebenehead = NULL
+            _LinkedListStruct* _ptr = NULL 
+            _LinkedListStruct* _tail = NULL
+            short zero = 0
+        length = board.shape[0]
+        dl = length*length
+        for x in range(length):
+            for xx in range(length):
+                checkboard[x,xx]=zero
 
-        for x in range(1, board.shape[0]**2):
-            movesebene = []
-            for m in range(len(moves)):
-                temp = Heuristics.getMovesInRadius(board, checkboard, moves[m], x, hboard)
-                for n in range(len(temp)):
-                    movesebene.append(temp[n])
-            moves = movesebene
-            if len(moves) == 0:
+        _head = add(_head, s.x,s.y)
+  
+
+        for x in range(1, dl):
+            _ptr = NULL
+            _ebenehead = NULL
+            while _head is not NULL:
+                Heuristics.getMovesInRadius(board, checkboard, _head, x, hboard, _ptr)
+                if _ebenehead is NULL:
+                    _ebenehead = _ptr
+                else:
+                    _tail = _ebenehead
+                    # anfügen der nächstes BFS iteration
+                    while _tail is not NULL:
+                        _tail = _tail.next
+                        if _tail is NULL:
+                            _tail = _ptr
+                            break
+                
+                _ptr = _head
+                _head = _head.next
+                free(_ptr)
+            _head = _ebenehead 
+            if _head is NULL:
                 break
+        return
+
 
     
     @staticmethod
-    cdef DTYPE_t territorial_eval_heurisic(short[:,::1]board,short token,unsigned short qn):
+    cdef DTYPE_t territorial_eval_heurisic(short[:,::1]board,short token,unsigned short qn, short[:,::1] checkboard, short[:,::1] wboard, short[:,::1] bboard)nogil:
         cdef:
-            Py_ssize_t a,i,j
-            DTYPE_t ret = 0.0
+            Py_ssize_t i,j
+            unsigned short pl = 1
 
-            np.ndarray[short, ndim=2] wboardo = np.full((board.shape[0],board.shape[0]), fill_value=999, dtype=np.short)
-            np.ndarray[short, ndim=2] bboardo = np.full((board.shape[0],board.shape[0]), fill_value=999, dtype=np.short)
+            DTYPE_t ret = 0.0        
+            _LinkedListStruct* _queenshead =  Board.get_queen_posn(board, pl, qn)
+            _LinkedListStruct*_ptr = NULL
 
-            short [:,::1] wboard = wboardo
-            short [:,::1] bboard = bboardo
-            short [:,::1] amazons = Board.get_queen_pos(board, 1, qn, 1)
-
-        for a in range(amazons.shape[0]):
-            Heuristics.amazonBFS(board, amazons[a], wboard)
-
-        amazons = Board.get_queen_pos(board, 2, qn, 1)
-        for a in range(amazons.shape[0]):
-            Heuristics.amazonBFS(board, amazons[a], bboard)
-        
         for i in range(board.shape[0]):
             for j in range(board.shape[0]):
-                if wboard[i,j] == bboard[i,j] and wboard[i,j] != 999:
-                        ret += 1 / 5
-                else: 
-                    if token == 1:
-                        if wboard[i,j] < bboard[i,j]:
-                            ret += 1
+                bboard[i,j] = 999
+                wboard[i,j] = 999
+
+        while _queenshead is not NULL:
+            Heuristics.amazonBFS(board, _queenshead, wboard, checkboard)
+            _ptr = _queenshead
+            _queenshead = _queenshead.next
+            free(_ptr)
+
+        pl = 2
+        _queenshead =  Board.get_queen_posn(board, pl, qn)
+
+        while _queenshead is not NULL:
+            Heuristics.amazonBFS(board, _queenshead, bboard, checkboard)
+            _ptr = _queenshead
+            _queenshead = _queenshead.next
+            free(_ptr)
+
+        for i in range(board.shape[0]):
+            for j in range(board.shape[0]):
+                    if wboard[i,j] == bboard[i,j]: 
+                        if token==1: 
+                            if wboard[i,j] != 999:
+                                ret += 0.2
+                        else: 
+                            if bboard[i,j] != 999:
+                                ret += 0.2
+                    else: 
+                        if token == 1:
+                            if wboard[i,j] < bboard[i,j]:
+                                ret += 1.0
+                            else:
+                                ret -= 1.0
                         else:
-                            ret -= 1
-                    else:
-                        if wboard[i,j] > bboard[i,j]:
-                            ret += 1
-                        else:
-                            ret -= 1
+                            if wboard[i,j] > bboard[i,j]:
+                                ret += 1.0
+                            else:
+                                ret -= 1.0
+              
         return ret
    
     
     @staticmethod
-    cdef DTYPE_t move_count( short[:, ::1] board, unsigned short token, unsigned short qn):
+    cdef DTYPE_t move_count( short[:, ::1] board, unsigned short token, unsigned short qn) nogil:
         cdef:
-            np.ndarray[short, ndim=2] boardx = np.pad(board, 1, "constant", constant_values=-1)  
-            short[:,::1] amazons = Board.get_queen_pos(board, token, qn,1)
-            short[:,::1] boardx_view = boardx
-            short[:,::1] qmove
-            Py_ssize_t j,s,x, lengthb
+            Py_ssize_t xi,yi
+            Py_ssize_t s, lengthb
             DTYPE_t ret = 0.0
             unsigned short y
+            _LinkedListStruct*_head = NULL
+            _LinkedListStruct*ptr = NULL
+            _LinkedListStruct*_queenshead =  Board.get_queen_posn(board, token, qn)
 
-        lengthb = boardx.shape[0]
-        for s in range(qn):
-            qmove = Board.get_amazon_moves(board, amazons[s],boardx_view)
-            if qmove is None:
-                continue
-            for j in range(qmove.shape[0]):
+             
+        lengthb = board.shape[0]
+     
+        while _queenshead is not NULL:
+            _head = Board.get_amazon_moves(board, _queenshead, _head)
+            while _head is not NULL:
+     
+                xi=_head.x
+                yi=_head.y
+
                 # move 
-                boardx_view[qmove[j,0],qmove[j,1]] = boardx_view[amazons[s,0],amazons[s,1]]
-                boardx_view[amazons[s,0],amazons[s,1]] = 0
-    
+                board[_head.x,_head.y] = board[_queenshead.x ,_queenshead.y]
+                board[_queenshead.x ,_queenshead.y] = 0
                 for y in range(1,lengthb): # hardcode thanks to cython north 
-                    qmove[j,0]-=1
-                    if boardx_view[qmove[j,0],qmove[j,1]]==0:
+                    xi-=1
+                    if xi>=0 and board[xi,yi]==0:
                         ret+=1.0
                     else:
-                        qmove[j,0]+=y
                         break
                     
+                xi=_head.x    
                 for y in range(1,lengthb): # hardcode thanks to cython south
-                    qmove[j,0]+= 1
-                    if boardx_view[qmove[j,0],qmove[j,1]]==0:
+                    xi+= 1
+                    if xi < lengthb and board[xi,yi]==0:
                         ret+=1.0
                     else:
-                        qmove[j,0]-=y
                         break
-                    
-                for y in range(1,lengthb): # hardcode thanks to cython left
-                    qmove[j,1]-= 1
-                # if 0 <= qmove[j,1] < lengthb:
-                    if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                        ret+=1.0
-                    else:
-                        qmove[j,1]+=y
-                        break
-                    
-                for y in range(1,lengthb): # hardcode thanks to cython  right
-                    qmove[j,1]+= 1
-                    if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                        ret+=1.0
-                    else:
-                        qmove[j,1]-=y
-                        break
-                    
-                for y in range(1,lengthb): # hardcode thanks to cython  south left
-                            qmove[j,0]-= 1
-                            qmove[j,1]-= 1
-                            if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                                ret+=1.0
-                            else:
-                                qmove[j,0]+=y
-                                qmove[j,1]+=y
-                                break
-                            
-                
-                for y in range(1,lengthb): # hardcode thanks to cython  south right
-                            qmove[j,0]-= 1
-                            qmove[j,1]+= 1
-                            if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                                ret+=1.0
-                            else:
-                                qmove[j,0]+=y
-                                qmove[j,1]-=y
-                                break
-                
-                for y in range(1,lengthb): # hardcode thanks to cython  north left
-                            qmove[j,0]+= 1
-                            qmove[j,1]-= 1
-                            if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                                ret+=1.0
-                            else:
-                                qmove[j,0]-=y
-                                qmove[j,1]+=y
-                                break
-                    
-                for y in range(1,lengthb): # hardcode thanks to cython  north right
-                            qmove[j,0]+= 1
-                            qmove[j,1]+= 1
-                            if boardx_view[qmove[j,0],qmove[j,1]]==0:
-                                ret+=1.0
-                            else:
-                                qmove[j,0]-=y
-                                qmove[j,1]-=y
-                                break
 
+                xi=_head.x    
+                for y in range(1,lengthb): # hardcode thanks to cython left
+                    yi-= 1
+                    if yi >= 0 and board[xi,yi]==0:
+                        ret+=1.0
+                    else:
+                        break
+
+                yi=_head.y    
+                for y in range(1,lengthb): # hardcode thanks to cython  right
+                    yi+= 1
+                    if yi < lengthb and board[xi,yi]==0:
+                        ret+=1.0
+                    else:
+                        break
+
+                yi=_head.y    
+                for y in range(1,lengthb): # hardcode thanks to cython  south left
+                            xi-= 1
+                            yi-= 1
+                            if xi >= 0 and yi >= 0 and board[xi,yi]==0:
+                                ret+=1.0
+                            else:
+                                break
+                xi=_head.x
+                yi=_head.y           
+                for y in range(1,lengthb): # hardcode thanks to cython  south right
+                            xi-= 1
+                            yi+= 1
+                            if xi >= 0 and yi < lengthb and board[xi,yi]==0:
+                                ret+=1.0
+                            else:
+                                break
+                xi=_head.x
+                yi=_head.y
+                for y in range(1,lengthb): # hardcode thanks to cython  north left
+                            xi+= 1
+                            yi-= 1
+                            if xi<lengthb and yi >= 0 and board[xi,yi]==0:
+                                ret+=1.0
+                            else:
+                                break
+                xi=_head.x
+                yi=_head.y
+                for y in range(1,lengthb): # hardcode thanks to cython  north right
+                            xi+= 1
+                            yi+= 1
+                            if xi < lengthb and yi < lengthb and board[xi,yi]==0:
+                                ret+=1.0
+                            else:
+                                break
 
                 # undo queen move
-                boardx_view[amazons[s,0],amazons[s,1]] = boardx_view[qmove[j,0],qmove[j,1]]
-                boardx_view[qmove[j,0],qmove[j,1]] = 0
+                board[_queenshead.x ,_queenshead.y] = board[_head.x,_head.y]
+                board[_head.x,_head.y] = 0
+                ptr = _head
+                _head = _head.next
+                free(ptr)
+            ptr = _queenshead
+            _queenshead = _queenshead.next
+            free(ptr)
         return ret
-    
-    
 
 cdef class AI:
    
     @staticmethod
-    cdef short[:,::1] get_ai_move(short[:, ::1] board, int mode, np.npy_bool owturn, unsigned short qnumber, short[:,::1] ops):  
+    cdef void get_ai_move(short[:, ::1] board, int mode, np.npy_bool owturn, unsigned short qnumber, short[:,::1] ops,short[:,::1] cb,short[:,::1] wb,short[:,::1] bb) nogil:  
         cdef:
             DTYPE_t best_score = -1000000.0
             unsigned short token = 1 if owturn else 2
-            short[:, :, ::1] MOVES_view =  Board.fast_moves(board, token, qnumber)
+
+            _MovesStruct*_ptr = NULL
+            _MovesStruct*_head = Board.fast_moves(board, token, qnumber)
             DTYPE_t score
-            short[:,::1] best_move
+            _MovesStruct*best_move = NULL
             np.npy_bool wturn = owturn
-            unsigned short depth = 2 if MOVES_view.shape[0] > 25 else 4
+            unsigned short depth = 2 #if MOVES_view.shape[0] > 25 else 4
             Py_ssize_t i
         
-        for i in range(MOVES_view.shape[0]):
-
+        while _head is not NULL:
+            
             # move
-            board[MOVES_view[i,1,0], MOVES_view[i,1,1]] = token
-            board[MOVES_view[i,0,0], MOVES_view[i,0,1]] = 0
-            board[MOVES_view[i,2,0], MOVES_view[i,2,1]] = -1
+            board[_head.dx,_head.dy] = token
+            board[_head.sx,_head.sy] = 0
+            board[_head.ax,_head.ay] = -1
 
-            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, 1000000.0, False, mode, ops)
-          
+            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, 1000000.0, False, mode, ops,cb,wb,bb)
             # undo 
-            board[MOVES_view[i,2,0], MOVES_view[i,2,1]] = 0
-            board[MOVES_view[i,1,0], MOVES_view[i,1,1]] = 0
-            board[MOVES_view[i,0,0], MOVES_view[i,0,1]] = token
-     
+            board[_head.ax,_head.ay] = 0
+            board[_head.dx,_head.dy] = 0
+            board[_head.sx,_head.sy] = token
+            
             if score > best_score:
                 best_score = score
-                best_move = MOVES_view[i]
+                _ptr = best_move
+                best_move = _head
+
+            else:
+                _ptr = _head
+
+            _head = _head.next
+            free(_ptr)
             
-        
-        board[best_move[1,0], best_move[1,1]] = token
-        board[best_move[0,0], best_move[0,1]] = 0
-        board[best_move[2,0], best_move[2,1]] = -1
-        return board
+        board[best_move.dx, best_move.dy] = token
+        board[best_move.sx, best_move.sy] = 0
+        board[best_move.ax, best_move.ay] = -1
+        free(best_move)
+        return 
     
    
     @staticmethod
-    cdef DTYPE_t alphabeta(short[:, ::1] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, DTYPE_t a, DTYPE_t b, np.npy_bool maximizing, int mode, short[:,::1] ops):
+    cdef DTYPE_t alphabeta(short[:, ::1] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, DTYPE_t a, DTYPE_t b, np.npy_bool maximizing, int mode, short[:,::1] ops,short[:,::1] cb,short[:,::1] wb,short[:,::1] bb)nogil:
         cdef:
-            DTYPE_t heuval
-            np.npy_bool token = 1 if wturn else 2
+            DTYPE_t heuval1,heuval2
+            short token = 1 if wturn else 2
+            short fremdtoken = 2 if wturn else 1
 
-        if depth == 0 or Board.iswon(board, wturn, qn, ops):
+        if depth == 0 or Board.iswon(board,token, qn, ops):
             if mode == 1:
-                if wturn:
-                    return Heuristics.move_count(board, 1, qn)-Heuristics.move_count(board, 2, qn)
-                else:
-                    return Heuristics.move_count(board, 2, qn)-Heuristics.move_count(board, 1, qn)
+                heuval1 = Heuristics.move_count(board, token, qn)
+                heuval2 = Heuristics.move_count(board, fremdtoken, qn)
+                return heuval1-heuval2
 
             else:
-                return Heuristics.territorial_eval_heurisic(board, token, qn)
+                return Heuristics.territorial_eval_heurisic(board, token, qn,cb,wb,bb)
 
-      
         cdef:
             DTYPE_t best_score
-            short[:, :, ::1] MOVES_view = Board.fast_moves(board, token, qn)
-            np.ndarray[short, ndim=1] indicies = np.arange(MOVES_view.shape[0],dtype=np.short)
+            _MovesStruct*_ptr = NULL
+            _MovesStruct*_head = Board.fast_moves(board, token, qn)
             Py_ssize_t i
 
-        np.random.shuffle(indicies) # randomizer ->>>>>>>>>>>>>>> good speedup somehow
 
         if maximizing:
             best_score = -1000000.0
-            for i in range(indicies.shape[0]):
+            while _head is not NULL:
 
                 # do move
-                board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = token # unpythonic way .. thanks to cython
-                board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = 0
-                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = -1
+                board[_head.dx,_head.dy] = token
+                board[_head.sx,_head.sy] = 0
+                board[_head.ax,_head.ay] = -1
 
-                best_score = max(best_score, AI.alphabeta(board, not wturn, qn, depth - 1, a, b, False, mode,ops))
+                best_score = max(best_score, AI.alphabeta(board, not wturn, qn, depth - 1, a, b, False, mode,ops,cb,wb,bb))
                 
                 # undo 
-                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = 0
-                board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = 0
-                board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = token
+                board[_head.ax,_head.ay] = 0
+                board[_head.dx,_head.dy] = 0
+                board[_head.sx,_head.sy] = token
+
                 a = max(a, best_score)
                 if b <= best_score:
                     break
+                _ptr = _head
+                _head = _head.next
+                free(_ptr)
         else:
             best_score = 1000000.0
 
-            for i in range(indicies.shape[0]):
+            while _head is not NULL:
 
                 # move
-                board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = token
-                board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = 0
-                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = -1
+                board[_head.dx,_head.dy] = token
+                board[_head.sx,_head.sy] = 0
+                board[_head.ax,_head.ay] = -1
 
-                best_score = min(best_score, AI.alphabeta(board,not wturn, qn, depth - 1, a, b, True, mode,ops))
+                best_score = min(best_score, AI.alphabeta(board,not wturn, qn, depth - 1, a, b, True, mode,ops,cb,wb,bb))
                 
                 # undo 
-                board[MOVES_view[indicies[i],2,0], MOVES_view[indicies[i],2,1]] = 0
-                board[MOVES_view[indicies[i],1,0], MOVES_view[indicies[i],1,1]] = 0
-                board[MOVES_view[indicies[i],0,0], MOVES_view[indicies[i],0,1]] = token
+                board[_head.ax,_head.ay] = 0
+                board[_head.dx,_head.dy] = 0
+                board[_head.sx,_head.sy] = token
+
                 b = min(b, best_score)
                 if best_score <= a:
                     break
+                _ptr = _head
+                _head = _head.next
+                free(_ptr)
+                
+        while _head is not NULL:
+            _ptr = _head
+            _head = _head.next
+            free(_ptr)
         return best_score
 
 cdef class MonteCarloTreeSearchNode():
@@ -737,61 +806,80 @@ cdef class MonteCarloTreeSearchNode():
         unsigned short qnumber
         short[:,::1] board
         MonteCarloTreeSearchNode parent
-        list children, _untried_actions
+        list children
         DTYPE_t wins, loses, _number_of_visits
-        short [:,::1] parent_action
+    cdef _MovesStruct*_untried_actions
 
-    def __cinit__(self,short[:,::1] bv,unsigned short qn,np.npy_bool wt,MonteCarloTreeSearchNode parent,short [:,::1] parent_action):
+
+    def __cinit__(self,short[:,::1] bv,unsigned short qn,np.npy_bool wt,MonteCarloTreeSearchNode parent):
         self.board = bv
         self.qnumber = qn
         self.wturn = wt
         self.parent = parent
-        self.parent_action = parent_action
         self.children = []
         self._number_of_visits = 0.0
         self.wins = 0.0
         self.loses = 0.0
-        self._untried_actions = list(Board.fast_moves(self.board, 1 if self.wturn else 2, self.qnumber))
+        cdef short token = 1 if self.wturn else 2
+        self._untried_actions = NULL
+        self._untried_actions = Board.fast_moves(self.board, token, self.qnumber)
 
     @staticmethod
     cdef MonteCarloTreeSearchNode expand(MonteCarloTreeSearchNode this):
         cdef short[:,::1] oboard = this.board
-        cdef short[:,::1] action = this._untried_actions.pop()
+        cdef _MovesStruct* action = this._untried_actions
+        this._untried_actions = this._untried_actions.next
         cdef short[:,::1] next_state = np.empty_like(this.board, dtype=np.short)
         next_state[...] = oboard
-        next_state[action[1,0],action[1,1]] = 1 if this.wturn else 2
-        next_state[action[0,0],action[0,1]] = 0 
-        next_state[action[2,0],action[2,1]] = -1
-
+        next_state[action.dx, action.dy] = 1 if this.wturn else 2
+        next_state[action.sx, action.sy] = 0 
+        next_state[action.ax, action.ay] = -1
+        free(action)
         child_node = MonteCarloTreeSearchNode(
-            next_state, this.qnumber, not this.wturn, parent=this, parent_action=action)
+            next_state, this.qnumber, not this.wturn, parent=this)
 
         this.children.append(child_node)
         return child_node 
 
     @staticmethod
-    cdef short rollout(MonteCarloTreeSearchNode this):
+    cdef short rollout(MonteCarloTreeSearchNode this, short[:,::1] ops):
         cdef:
             short[:,::1] oboard = this.board
             short[:,::1] current_rollout_state  = np.empty_like(this.board)
-            short[:,:,::1] possible_moves
+            _MovesStruct*possible_moves= NULL
+            _MovesStruct*ptr = NULL
+            _MovesStruct*action = NULL
+            short[:,::1] amazons = np.empty((this.qnumber ,2),dtype=np.short)
+            int ts = time(NULL)
             np.npy_bool current_wturn = this.wturn
+            short token = 1 if current_wturn else 2
             Py_ssize_t ind
-            np.ndarray[short, ndim=2] opso = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]],dtype=np.short)
-            short [:,::1] ops = opso
+
         current_rollout_state [...] = oboard
+            
+        while not Board.iswon(current_rollout_state,token, this.qnumber, ops):
 
-        while not Board.iswon(current_rollout_state, current_wturn, this.qnumber, ops):
-            possible_moves = Board.fast_moves(current_rollout_state, 1 if current_wturn else 2, this.qnumber)
-            ind = np.random.randint(possible_moves.shape[0])
-            action = possible_moves[ind]
+            possible_moves = Board.fast_moves(current_rollout_state, token, this.qnumber)#own function
+            srand(ts)
+            ind = (rand()%possible_moves.length)+1
 
-            current_rollout_state[possible_moves[ind,1,0],possible_moves[ind,1,1]] = 1 if current_wturn else 2
-            current_rollout_state[possible_moves[ind,0,0],possible_moves[ind,0,1]] = 0 
-            current_rollout_state[possible_moves[ind,2,0],possible_moves[ind,2,1]] = -1
+            while possible_moves is not NULL:
+                
+                if possible_moves.length == ind:
+                    action = possible_moves
+                    possible_moves = possible_moves.next
+                else:
+                    ptr = possible_moves
+                    possible_moves = possible_moves.next
+                    free(ptr)
+
+            current_rollout_state[action.dx,action.dy] = token
+            current_rollout_state[action.sx,action.sy] = 0 
+            current_rollout_state[action.ax,action.ay] = -1
             current_wturn = not current_wturn
+            token = 1 if current_wturn else 2
+            free(action)
 
-        # current_rollout_state.wturn verlierer
         return -1 if current_wturn == this.wturn else 1
 
     @staticmethod
@@ -810,6 +898,7 @@ cdef class MonteCarloTreeSearchNode():
     cdef MonteCarloTreeSearchNode best_child(MonteCarloTreeSearchNode this, DTYPE_t c_param):
         cdef:
             MonteCarloTreeSearchNode best = None
+            list kinder = this.children
             DTYPE_t best_score = -1000.0
             DTYPE_t score
             DTYPE_t wins = this.wins
@@ -817,7 +906,7 @@ cdef class MonteCarloTreeSearchNode():
             DTYPE_t cw,cn
             MonteCarloTreeSearchNode c
 
-        for c in this.children:
+        for c in kinder:
             # original score
             #score = ((c.wins - c.loses) / c._number_of_visits) + c_param * np.sqrt((2 * logownvisits  / c._number_of_visits))
             cw = c.wins
@@ -835,14 +924,14 @@ cdef class MonteCarloTreeSearchNode():
     cdef MonteCarloTreeSearchNode tree_policy(MonteCarloTreeSearchNode this, DTYPE_t c_param, short[:,::1] ops):
         cdef:
             MonteCarloTreeSearchNode current_node = this
-            Py_ssize_t length
+            short token = 1 if current_node.wturn else 2
 
-        while not Board.iswon(current_node.board, current_node.wturn, current_node.qnumber, ops):
-            length = len(current_node._untried_actions)
-            if length != 0:
+        while not Board.iswon(current_node.board, token, current_node.qnumber, ops):#hier
+            if current_node._untried_actions is not NULL:
                 return MonteCarloTreeSearchNode.expand(current_node)
             else:
                 current_node = MonteCarloTreeSearchNode.best_child(current_node, c_param)
+                token = 1 if current_node.wturn else 2
 
         return current_node
 
@@ -856,7 +945,7 @@ cdef class MonteCarloTreeSearchNode():
         for i in range(simulation_no):
             
             v = MonteCarloTreeSearchNode.tree_policy(this,c_param, ops)
-            reward = MonteCarloTreeSearchNode.rollout(v)
+            reward = MonteCarloTreeSearchNode.rollout(v, ops)
             MonteCarloTreeSearchNode.backpropagate(v, reward)
         
         return MonteCarloTreeSearchNode.best_child(this, c_param).board
@@ -864,58 +953,12 @@ cdef class MonteCarloTreeSearchNode():
 cpdef alphabet2num(pos_raw):
     return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
 
-def test(times=1,inputfile= "3x3",A=1,B=1,MCTS=10000):
-    stamp = time.time()
-    field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS)
-    field.game()
-    print(str(time.time()-stamp))
-    return
-
-def main(times=100,inputfile= "3x3",A=1,B=1,MCTS=10000):
-
-
-    def temp(i,q,inputfile, num,A,B,MCTS):
-        cdef Amazons field
-        cdef int f = 0
-        for _ in range(num):    
-            field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS)
-            np.random.seed()
-            f += int(field.game())
-        q.put(f)
-
-    print(os.cpu_count(), ": CPU COUNT")
-    countcpu = os.cpu_count()
-    balance = int(times/countcpu)
-    processes =[]
-    q = multiprocessing.Queue()
-    stamp = time.time()
-    for i in range(countcpu):
-        p = multiprocessing.Process(target=temp,args=(str(i),q,inputfile,balance,A,B,MCTS)) 
-        p.start()
-        processes.append(p)
-    for p in processes:
-        p.join()
-
-    results = [q.get() for j in processes]
-    print(results)
-
-    f = open("res.txt", "a")
-    f.write(str(time.time()-stamp)+"\n"+"white wins: "+str(sum(results))+"\n"+str(times)+ "A: "+str(A)+"B: "+str(B)+"MCTS: "+str(MCTS)+"\n\n")
-    f.close()
-
-    #print("white wins: ", white)
-    #print("black wins: ", black)
-    #3x3
-    #white wins:  73    1
-    #black wins:  27    3 10000
-    #white wins:  91    3 10000
-    #black wins:  9     1
-    #59/ 100 MCTS
-
-
-#75.7377610206604
-#white wins: 94
-#100
-    # übergabe von queens
-    # boardx übertrag
-    # boundary instead of boardx
+def main(q, times=100,inputfile= "3x3",A=1,B=1,MCTS=10000):
+ 
+    cdef Amazons field
+    cdef int f = 0
+    for _ in range(times):    
+        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS)
+        np.random.seed()
+        f += int(field.game())
+    q.put(f)
