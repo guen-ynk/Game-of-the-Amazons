@@ -703,7 +703,7 @@ cdef class AI:
             _MovesStruct*best_move = NULL
             np.npy_bool wturn = owturn
             Py_ssize_t i
-            unsigned short depth = 2 if _head.length > 25 else 8
+            unsigned short depth = 2 if _head.length > 50 else 8
 
         while _head is not NULL:
             
@@ -742,7 +742,7 @@ cdef class AI:
             DTYPE_t heuval1,heuval2
             short token = 1 if wturn else 2
 
-        if Board.iswon(board,token, qn, ops):
+        if depth == 0 or Board.iswon(board,token, qn, ops):
             if mode == 1:
                 heuval1 = Heuristics.move_count(board, 1, qn)
                 heuval2 = Heuristics.move_count(board, 2, qn)
