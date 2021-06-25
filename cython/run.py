@@ -16,8 +16,8 @@ def main(times=5,inputfile= "6x6",A=1,B=3,MCTS=100,cores=4):
     processes =[]
     q = multiprocessing.Queue()
     stamp = time.time()
-    for _ in range(cores):
-        p = multiprocessing.Process(target=amazons.main,args=(q,times,inputfile,A,B,MCTS)) 
+    for i in range(cores):
+        p = multiprocessing.Process(target=amazons.main,args=(i,q,times,inputfile,A,B,MCTS)) 
         p.start()
         processes.append(p)
     for p in processes:
