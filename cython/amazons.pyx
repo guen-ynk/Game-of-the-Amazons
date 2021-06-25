@@ -48,6 +48,11 @@ ctypedef struct _MCTS_Node:
 
 cdef _MCTS_Node* newnode(_MovesStruct*move, np.npy_bool wturn, unsigned short qnumber, _MCTS_Node*parent)nogil:
     cdef _MCTS_Node*obj = <_MCTS_Node*> malloc(sizeof(_MCTS_Node))
+
+    while not obj:
+        free(obj)
+        obj = <_MCTS_Node*> malloc(sizeof(_MCTS_Node))
+    
     obj.token = 1 if wturn else 2
     obj.wturn = wturn
     obj.qnumber = qnumber
@@ -65,7 +70,9 @@ cdef _MCTS_Node* newnode(_MovesStruct*move, np.npy_bool wturn, unsigned short qn
 
 cdef _LinkedListStruct* add(_LinkedListStruct* _head, Py_ssize_t x, Py_ssize_t y) nogil: 
         cdef _LinkedListStruct*obj = <_LinkedListStruct*> malloc(sizeof(_LinkedListStruct))
-        
+        while not obj:
+            free(obj)
+            obj = <_LinkedListStruct*> malloc(sizeof(_LinkedListStruct))
         obj.x = x
         obj.y = y
         obj.next = NULL 
@@ -79,7 +86,9 @@ cdef _LinkedListStruct* add(_LinkedListStruct* _head, Py_ssize_t x, Py_ssize_t y
 
 cdef _MovesStruct* push(_MovesStruct* _head, Py_ssize_t sx,Py_ssize_t sy,Py_ssize_t dx,Py_ssize_t dy,Py_ssize_t ax,Py_ssize_t ay )nogil: 
         cdef _MovesStruct*obj = <_MovesStruct*> malloc(sizeof(_MovesStruct))
-       
+        while not obj:
+            free(obj)
+            obj = <_MovesStruct*> malloc(sizeof(_MovesStruct))
         obj.sx = sx
         obj.sy = sy
         obj.dx = dx
@@ -509,9 +518,9 @@ cdef class Heuristics:
             _ebenehead = NULL
           
             while _head is not NULL: 
-            
+
                 _ptr = Heuristics.getMovesInRadius(board, _head, x, hboard)
-              
+
                 if _ptr is not NULL:
                     if _ebenehead is NULL:
                         _ebenehead = _ptr 
@@ -966,11 +975,14 @@ cdef class MonteCarloTreeSearchNode():
     @staticmethod
     cdef void freetree(_MCTS_Node*root)nogil:
         cdef _MCTS_Node*children = root.children
+        cdef _MCTS_Node*child = NULL
         cdef _MovesStruct*move = NULL
         cdef _MovesStruct*tmp = NULL
         while children is not NULL:
-            MonteCarloTreeSearchNode.freetree(children)
+            child = children
             children = children.next
+            MonteCarloTreeSearchNode.freetree(child)
+            
         move = root._untried_actions
         while move is not NULL:
             tmp = move
