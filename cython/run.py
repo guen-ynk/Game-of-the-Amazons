@@ -5,7 +5,7 @@ import time
 import multiprocessing
 import amazons
 
-def main(times=1,inputfile= "6x6",A=2 ,B=2,MCTS=10000,cores=1):
+def main(times=5,inputfile= "6x6",A=1,B=3,MCTS=100,cores=20):
     print(os.cpu_count(), ": CPU COUNT")
 
     processes =[]
