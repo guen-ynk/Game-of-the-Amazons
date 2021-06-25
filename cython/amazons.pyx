@@ -41,7 +41,7 @@ ctypedef struct _MCTS_Node:
     DTYPE_t wins, loses, _number_of_visits
 
     _MCTS_Node* parent
-    _MCTS_Node* children # first
+    _MCTS_Node* children 
     _MCTS_Node* next
     _MovesStruct* move
     _MovesStruct*_untried_actions    
@@ -74,8 +74,6 @@ cdef _LinkedListStruct* add(_LinkedListStruct* _head, Py_ssize_t x, Py_ssize_t y
             _head = obj
             return _head
         else:
-            # head-> head.next-> head.next.next -> NULL
-            # obj -> head-> head.next-> head.next.next -> NULL
             obj.next = _head
             return obj
 
@@ -131,7 +129,7 @@ cdef class Amazons:
             short [:,::1] bboard = np.full((bsize,bsize), fill_value=999, dtype=np.short)
             short [:,::1] copyboard = np.empty((bsize, bsize), dtype=np.short)
             _MCTS_Node*root = NULL
-       # Heuristics.territorial_eval_heurisic(self.board.board_view,token, self.board.qnumber,checkboard, wboard,bboard)
+        
         while True:
             for n, x in enumerate(self.player):
                 token = 1 if self.board.wturn else 2
@@ -139,8 +137,7 @@ cdef class Amazons:
                     print(self.board)
                     return not self.board.wturn
                 #if not x:
-                 #   player.player(self.board) 
-                #el
+                #   player.player(self.board) 
                 if x==1 or x==2:
                     AI.get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, wboard, bboard)
                     self.board.wturn = not self.board.wturn
@@ -149,8 +146,7 @@ cdef class Amazons:
                     root._untried_actions = Board.fast_moves(self.board.board_view, root.token, root.qnumber)
                     MonteCarloTreeSearchNode.best_action(root,self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id)
                     self.board.wturn = not self.board.wturn
-               # print(self.board)
-               # return 1
+                print(self.board)
 cdef class Board:
     cdef public:
         np.npy_bool wturn 
@@ -565,31 +561,29 @@ cdef class Heuristics:
             _ptr = _queenshead
             _queenshead = _queenshead.next
             free(_ptr)
-       
 
         for i in range(board.shape[0]):
             for j in range(board.shape[0]):
                     if board[i,j] != 0:
                         continue
-                    if wboard[i,j] == bboard[i,j]: 
-                        if token==1: 
+                    if token ==1:
+                        if wboard[i,j] == bboard[i,j]:  
                             if wboard[i,j] != 999:
                                 ret += 0.2
                         else: 
-                            if bboard[i,j] != 999:
-                                ret += 0.2
-                    else: 
-                        if token == 1:
                             if wboard[i,j] < bboard[i,j]:
-                                ret += 1.0
+                                    ret += 1.0
                             else:
-                                ret -= 1.0
-                        else:
-                            if wboard[i,j] > bboard[i,j]:
-                                ret += 1.0
+                                    ret -= 1.0
+                    else:
+                        if wboard[i,j] == bboard[i,j]:  
+                            if bboard[i,j] != 999:
+                                    ret += 0.2
+                        else: 
+                            if bboard[i,j] < wboard[i,j]:
+                                    ret += 1.0
                             else:
-                                ret -= 1.0
-              
+                                    ret -= 1.0
         return ret
    
     
@@ -709,8 +703,8 @@ cdef class AI:
             _MovesStruct*best_move = NULL
             np.npy_bool wturn = owturn
             Py_ssize_t i
-            unsigned short depth = 2 if _head.length > 12 else 4
-        
+            unsigned short depth = 2 if _head.length > 25 else 8
+
         while _head is not NULL:
             
             # move
@@ -718,7 +712,7 @@ cdef class AI:
             board[_head.sx,_head.sy] = 0
             board[_head.ax,_head.ay] = -1
 
-            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, 1000000.0, False, mode, ops,wb,bb)
+            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, 1000000.0, False, mode, ops,wb,bb, wturn)
             # undo 
             board[_head.ax,_head.ay] = 0
             board[_head.dx,_head.dy] = 0
@@ -743,21 +737,33 @@ cdef class AI:
     
    
     @staticmethod
-    cdef DTYPE_t alphabeta(short[:, ::1] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, DTYPE_t a, DTYPE_t b, np.npy_bool maximizing, int mode, short[:,::1] ops,short[:,::1] wb,short[:,::1] bb)nogil:
+    cdef DTYPE_t alphabeta(short[:, ::1] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, DTYPE_t a, DTYPE_t b, np.npy_bool maximizing, int mode, short[:,::1] ops,short[:,::1] wb,short[:,::1] bb, np.npy_bool callerwturn )nogil:
         cdef:
             DTYPE_t heuval1,heuval2
             short token = 1 if wturn else 2
-            short fremdtoken = 2 if wturn else 1
 
-        if depth == 0 or Board.iswon(board,token, qn, ops):
+        if Board.iswon(board,token, qn, ops):
             if mode == 1:
-                heuval1 = Heuristics.move_count(board, token, qn)
-                heuval2 = Heuristics.move_count(board, fremdtoken, qn)
-                return heuval1-heuval2
+                heuval1 = Heuristics.move_count(board, 1, qn)
+                heuval2 = Heuristics.move_count(board, 2, qn)
+                
+                if callerwturn == wturn:
+                    if wturn:
+                        return heuval1-heuval2
+                    else:
+                        return heuval2-heuval1
+                else:
+                    if wturn:
+                        return -heuval1-heuval2
+                    else: 
+                        return -heuval2-heuval1
 
             else:
-                return Heuristics.territorial_eval_heurisic(board, token, qn,wb,bb)
-
+                if callerwturn == wturn:
+                    return Heuristics.territorial_eval_heurisic(board, token, qn,wb,bb)
+                else:
+                    return -Heuristics.territorial_eval_heurisic(board, token, qn,wb,bb)
+                  
         cdef:
             DTYPE_t best_score
             _MovesStruct*_ptr = NULL
@@ -774,7 +780,7 @@ cdef class AI:
                 board[_head.sx,_head.sy] = 0
                 board[_head.ax,_head.ay] = -1
 
-                best_score = max(best_score, AI.alphabeta(board, not wturn, qn, depth - 1, a, b, False, mode,ops,wb,bb))
+                best_score = max(best_score, AI.alphabeta(board, not wturn, qn, depth - 1, a, b, False, mode,ops,wb,bb, callerwturn))
                 
                 # undo 
                 board[_head.ax,_head.ay] = 0
@@ -797,7 +803,7 @@ cdef class AI:
                 board[_head.sx,_head.sy] = 0
                 board[_head.ax,_head.ay] = -1
 
-                best_score = min(best_score, AI.alphabeta(board,not wturn, qn, depth - 1, a, b, True, mode,ops,wb,bb))
+                best_score = min(best_score, AI.alphabeta(board,not wturn, qn, depth - 1, a, b, True, mode,ops,wb,bb, callerwturn))
                 
                 # undo 
                 board[_head.ax,_head.ay] = 0
@@ -838,9 +844,6 @@ cdef class MonteCarloTreeSearchNode():
             child_node.next = this.children
             this.children = child_node 
 
-        #board[action.ax,action.ay] = 0
-        #board[action.dx,action.dy] = 0
-        #board[action.sx,action.sy] = this.token 
         return child_node 
 
     @staticmethod
