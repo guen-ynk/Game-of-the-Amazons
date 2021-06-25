@@ -5,9 +5,14 @@ import time
 import multiprocessing
 import amazons
 
-def main(times=5,inputfile= "6x6",A=1,B=3,MCTS=100,cores=20):
+def main(times=5,inputfile= "6x6",A=1,B=3,MCTS=100,cores=4):
     print(os.cpu_count(), ": CPU COUNT")
-
+    times = int(input("times"))
+    inputfile = input("nxn")
+    A = int(input("A mode"))
+    B = int(input("B mode"))
+    MCTS = int(input("MCTS sim"))
+    cores = int(input("cores#"))
     processes =[]
     q = multiprocessing.Queue()
     stamp = time.time()
