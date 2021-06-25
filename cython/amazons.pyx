@@ -744,7 +744,6 @@ cdef class AI:
         free(best_move)
         return 
     
-   
     @staticmethod
     cdef DTYPE_t alphabeta(short[:, ::1] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, DTYPE_t a, DTYPE_t b, np.npy_bool maximizing, int mode, short[:,::1] ops,short[:,::1] wb,short[:,::1] bb, np.npy_bool callerwturn )nogil:
         cdef:
@@ -991,7 +990,6 @@ cdef class MonteCarloTreeSearchNode():
         if root.move is not NULL:
             free(root.move)
         free(root)
-
 
 cpdef alphabet2num(pos_raw):
     return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
