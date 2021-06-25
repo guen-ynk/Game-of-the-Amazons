@@ -106,9 +106,9 @@ cdef class Amazons:
         list white_init, black_init
         public Board board
         public list player
-        int MCTS
+        int MCTS, id
 
-    def __init__(self, config="config.txt", A=1,B=1,MCTS=10000):
+    def __init__(self, config="config.txt", A=1,B=1,MCTS=10000, j=1):
         info = open(config, "r")
         self.n = int(info.readline())
         white = info.readline().split(":")
@@ -120,6 +120,7 @@ cdef class Amazons:
         self.player = [A,B]
         self.board = Board(self.n, self.white_init, self.black_init)
         self.MCTS = MCTS
+        self.id = j
 
     def game(self):
         cdef:
@@ -146,7 +147,7 @@ cdef class Amazons:
                 else:
                     root = newnode(NULL,self.board.wturn, self.board.qnumber, parent=NULL)
                     root._untried_actions = Board.fast_moves(self.board.board_view, root.token, root.qnumber)
-                    MonteCarloTreeSearchNode.best_action(root,self.MCTS, 0.1,ops,self.board.board_view, copyboard)
+                    MonteCarloTreeSearchNode.best_action(root,self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id)
                     self.board.wturn = not self.board.wturn
                # print(self.board)
                # return 1
@@ -843,7 +844,7 @@ cdef class MonteCarloTreeSearchNode():
         return child_node 
 
     @staticmethod
-    cdef short rollout(_MCTS_Node* this, short[:,::1] ops, short[:,::1] board, short[:,::1] copyb)nogil:
+    cdef short rollout(_MCTS_Node* this, short[:,::1] ops, short[:,::1] board, short[:,::1] copyb, int id)nogil:
         cdef:
             _MovesStruct*possible_moves= NULL
             _MovesStruct*ptr = NULL
@@ -862,7 +863,7 @@ cdef class MonteCarloTreeSearchNode():
         while not Board.iswon(copyb,token, this.qnumber, ops):
             possible_moves = Board.fast_moves(copyb, token, this.qnumber)#own function
             srand(ts)
-            ind = (rand()%possible_moves.length)+1
+            ind = ((rand()+id)%possible_moves.length)+1
             while possible_moves is not NULL:
                 
                 if possible_moves.length == ind:
@@ -930,7 +931,6 @@ cdef class MonteCarloTreeSearchNode():
             _MCTS_Node* current_node = this
 
         while not Board.iswon(board, current_node.token, current_node.qnumber, ops):#hier
-            #print(np.asarray(board), current_node.token)
 
             if current_node._untried_actions is not NULL:
                 return MonteCarloTreeSearchNode.expand(current_node, board)
@@ -943,7 +943,7 @@ cdef class MonteCarloTreeSearchNode():
         return current_node
 
     @staticmethod
-    cdef void best_action(_MCTS_Node * this, unsigned short simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb)nogil:        
+    cdef void best_action(_MCTS_Node * this, unsigned short simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb, int id)nogil:        
         cdef:
             short reward
             unsigned short i
@@ -951,7 +951,7 @@ cdef class MonteCarloTreeSearchNode():
             _MovesStruct* best = NULL
         for i in range(simulation_no):
             v = MonteCarloTreeSearchNode.tree_policy(this,c_param, ops, board)
-            reward = MonteCarloTreeSearchNode.rollout(v, ops, board, copyb)
+            reward = MonteCarloTreeSearchNode.rollout(v, ops, board, copyb, id)
             MonteCarloTreeSearchNode.backpropagate(v, reward, board)   
         v = MonteCarloTreeSearchNode.best_child(this, c_param)
         best =  v.move
@@ -981,11 +981,11 @@ cdef class MonteCarloTreeSearchNode():
 cpdef alphabet2num(pos_raw):
     return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
 
-def main(q, times,inputfile,A,B,MCTS):
-
+def main(i,q, times,inputfile,A,B,MCTS):
+    cdef int j = i
     cdef Amazons field
     cdef int f = 0
     for _ in range(times):    
-        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS)
+        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j)
         f += int(field.game())
     q.put(f)
