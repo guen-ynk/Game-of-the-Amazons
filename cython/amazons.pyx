@@ -753,22 +753,17 @@ cdef class AI:
                 heuval1 = Heuristics.move_count(board, 1, qn)
                 heuval2 = Heuristics.move_count(board, 2, qn)
                 
-                if callerwturn == wturn:
-                    if wturn:
-                        return heuval1-heuval2
-                    else:
-                        return heuval2-heuval1
+                if callerwturn:
+                    #if wturn:
+                    return heuval1-heuval2
                 else:
-                    if wturn:
-                        return -heuval1-heuval2
-                    else: 
-                        return -heuval2-heuval1
+                    return heuval2-heuval1
 
             else:
-                if callerwturn == wturn:
-                    return Heuristics.territorial_eval_heurisic(board, token, qn,wb,bb)
+                if callerwturn:
+                    return Heuristics.territorial_eval_heurisic(board, 1, qn,wb,bb)
                 else:
-                    return -Heuristics.territorial_eval_heurisic(board, token, qn,wb,bb)
+                    return Heuristics.territorial_eval_heurisic(board, 2, qn,wb,bb)
                   
         cdef:
             DTYPE_t score = 0.0
