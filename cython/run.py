@@ -5,7 +5,7 @@ import time
 import multiprocessing
 import amazons
 
-def main(times=1,inputfile= "4x4",A=3,B=3,MCTS=10000,cores=1):
+def main(times=30,inputfile= "4x4",A=3,B=2,MCTS=1000,cores=2):
     print(os.cpu_count(), ": CPU COUNT")
    # times = int(input("times"))
     #inputfile = input("nxn")
@@ -13,12 +13,15 @@ def main(times=1,inputfile= "4x4",A=3,B=3,MCTS=10000,cores=1):
     #B = int(input("B mode"))
     #MCTS = int(input("MCTS sim"))
     #cores = int(input("cores#"))
-    times=  13
-    cores = 4
+    times=  5
+    cores = 10
     inputfile = "8x8"
     Alist = [1,3,1,3,1,3,2,3,2,3,2,3]
     Blist = [3,1,3,1,3,1,3,2,3,2,3,2]
     MCTSl = [1000,1000,5000,5000,10000,10000,1000,1000,5000,5000,10000,10000]
+    #Alist = [A]
+    #Blist = [B]
+    #MCTSl =[MCTS]
     for x in range(len(Alist)):
         processes =[]
         q = multiprocessing.Queue()

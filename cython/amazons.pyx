@@ -500,12 +500,11 @@ cdef class Heuristics:
     @staticmethod
     cdef void amazonBFS(short [:,::1] board, _LinkedListStruct*s, short[:,::1] hboard) nogil:
         cdef:
-            Py_ssize_t x,xx, length,dl
+            Py_ssize_t x,length,dl
             _LinkedListStruct* _head = NULL         # BFS HEAD
             _LinkedListStruct* _ebenehead = NULL    # BFS TEMPORARY NEW
             _LinkedListStruct* _ptr = NULL             
             _LinkedListStruct* _tail = NULL
-            _LinkedListStruct* _tmp = NULL
             
         length = board.shape[0]
         dl = length*length
@@ -544,7 +543,7 @@ cdef class Heuristics:
     @staticmethod
     cdef DTYPE_t territorial_eval_heurisic(short[:,::1]board,short token,unsigned short qn, short[:,::1] wboard, short[:,::1] bboard)nogil:
         cdef:
-            Py_ssize_t i,j, d
+            Py_ssize_t i,j,d
             unsigned short pl = 1
 
             DTYPE_t ret = 0.0        
@@ -701,17 +700,17 @@ cdef class Heuristics:
 cdef class AI:
    
     @staticmethod
-    cdef void get_ai_move(short[:, ::1] board, int mode, np.npy_bool owturn, unsigned short qnumber, short[:,::1] ops,short[:,::1] wb,short[:,::1] bb) nogil:  
+    cdef void get_ai_move(short[:, ::1] board, int mode, np.npy_bool wturn, unsigned short qnumber, short[:,::1] ops,short[:,::1] wb,short[:,::1] bb) nogil:  
         cdef:
             DTYPE_t best_score = -1000000.0
-            unsigned short token = 1 if owturn else 2
+            DTYPE_t rbest_score = 1000000.0
+            DTYPE_t score = 0.0
+
+            unsigned short token = 1 if wturn else 2
 
             _MovesStruct*_ptr = NULL
             _MovesStruct*_head = Board.fast_moves(board, token, qnumber)
-            DTYPE_t score
             _MovesStruct*best_move = NULL
-            np.npy_bool wturn = owturn
-            Py_ssize_t i
             unsigned short depth = 2 if _head.length > 50 else 8
 
         while _head is not NULL:
@@ -721,7 +720,7 @@ cdef class AI:
             board[_head.sx,_head.sy] = 0
             board[_head.ax,_head.ay] = -1
 
-            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, 1000000.0, False, mode, ops,wb,bb, wturn)
+            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, rbest_score, False, mode, ops,wb,bb, wturn)
             # undo 
             board[_head.ax,_head.ay] = 0
             board[_head.dx,_head.dy] = 0
@@ -731,7 +730,6 @@ cdef class AI:
                 best_score = score
                 _ptr = best_move
                 best_move = _head
-
             else:
                 _ptr = _head
 
@@ -773,14 +771,11 @@ cdef class AI:
                     return -Heuristics.territorial_eval_heurisic(board, token, qn,wb,bb)
                   
         cdef:
-            DTYPE_t best_score
+            DTYPE_t score = 0.0
             _MovesStruct*_ptr = NULL
             _MovesStruct*_head = Board.fast_moves(board, token, qn)
-            Py_ssize_t i
-
 
         if maximizing:
-            best_score = -1000000.0
             while _head is not NULL:
 
                 # do move
@@ -788,22 +783,20 @@ cdef class AI:
                 board[_head.sx,_head.sy] = 0
                 board[_head.ax,_head.ay] = -1
 
-                best_score = max(best_score, AI.alphabeta(board, not wturn, qn, depth - 1, a, b, False, mode,ops,wb,bb, callerwturn))
+                score = AI.alphabeta(board, not wturn, qn, depth - 1, a, b, False, mode,ops,wb,bb, callerwturn)
                 
                 # undo 
                 board[_head.ax,_head.ay] = 0
                 board[_head.dx,_head.dy] = 0
                 board[_head.sx,_head.sy] = token
 
-                a = max(a, best_score)
-                if b <= best_score:
+                a = max(a, score)
+                if b <= a:
                     break
                 _ptr = _head
                 _head = _head.next
                 free(_ptr)
         else:
-            best_score = 1000000.0
-
             while _head is not NULL:
 
                 # move
@@ -811,15 +804,15 @@ cdef class AI:
                 board[_head.sx,_head.sy] = 0
                 board[_head.ax,_head.ay] = -1
 
-                best_score = min(best_score, AI.alphabeta(board,not wturn, qn, depth - 1, a, b, True, mode,ops,wb,bb, callerwturn))
+                score = AI.alphabeta(board,not wturn, qn, depth - 1, a, b, True, mode,ops,wb,bb, callerwturn)
                 
                 # undo 
                 board[_head.ax,_head.ay] = 0
                 board[_head.dx,_head.dy] = 0
                 board[_head.sx,_head.sy] = token
 
-                b = min(b, best_score)
-                if best_score <= a:
+                b = min(b, score)
+                if b <= a:
                     break
                 _ptr = _head
                 _head = _head.next
@@ -829,7 +822,7 @@ cdef class AI:
             _ptr = _head
             _head = _head.next
             free(_ptr)
-        return best_score
+        return score
 
 cdef class MonteCarloTreeSearchNode():
    
@@ -861,7 +854,6 @@ cdef class MonteCarloTreeSearchNode():
             _MovesStruct*ptr = NULL
             _MovesStruct*action = NULL
             int ts = time(NULL)
-            short res 
             np.npy_bool current_wturn = this.wturn
             short token = this.token
             Py_ssize_t ind,jnd
@@ -998,7 +990,8 @@ def main(i,q, times,inputfile,A,B,MCTS):
     cdef int j = i
     cdef Amazons field
     cdef int f = 0
-    for _ in range(times):    
-        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j)
+    cdef int k 
+    for k in range(times):    
+        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j+k)
         f += int(field.game())
     q.put(f)
