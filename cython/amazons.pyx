@@ -6,8 +6,27 @@
 #cython: nonecheck=False
 #cython: initializedcheck=False
 
+'''
+   @author: Guen Yanik, 2021
+   @startup: run python setup.py build_ext --inplace & run.py
+   @info:
+        Cython Version of 'Game of the Amazons' for Boards of size nxn,
+        to setup Board create nxnconfig.txt with startpositions of m queens
+        -> also see /configs for examples
+
+        Player modes: 
+        0 human
+        1 AlphaBeta - Mobility eval heuristic
+        2 Alphabeta - Territorial eval heuristic
+        3 MCTS      - k Games per turn
+
+        for multithreading see run.py 
+
+'''
+
 cimport cython
 from libc.stdlib cimport malloc, free, rand, srand
+import player
 import numpy as np
 cimport numpy as np
 from libc.math cimport sqrt, log
@@ -18,28 +37,25 @@ from libc.time cimport time,time_t
 DTYPE = np.float64
 ctypedef np.float64_t DTYPE_t
 
-cdef DTYPE_t calculateUCB(DTYPE_t winsown, DTYPE_t countown, DTYPE_t winschild, DTYPE_t countchild ) nogil:
-        cdef:
-            DTYPE_t ratio_kid = winschild/countchild
-            DTYPE_t visits_log = log(countown)
-            DTYPE_t wurzel = sqrt((visits_log/countchild) * min(0.25, ratio_kid-(ratio_kid*ratio_kid), sqrt(2*visits_log/countchild)) )
-        return (ratio_kid + wurzel)
-
+# coordinates list struct
 ctypedef struct _LinkedListStruct:
     Py_ssize_t x,y
     _LinkedListStruct*next   
 
-
+# move coordinates list struct
 ctypedef struct _MovesStruct:
+    # s: source; d: destination; a: arrow; length: length of list
     Py_ssize_t sx,sy,dx,dy,ax,ay,length
     _MovesStruct*next   
 
-
+# MCTS Node struct
 ctypedef struct _MCTS_Node:
+    # turn of player
     np.npy_bool wturn 
+    # amazons count per side, player token
     unsigned short qnumber, token
     DTYPE_t wins, loses, _number_of_visits
-
+    
     _MCTS_Node* parent
     _MCTS_Node* children 
     _MCTS_Node* next
@@ -145,9 +161,10 @@ cdef class Amazons:
                 if Board.iswon(self.board.board_view, token, self.board.qnumber, ops):
                     print(self.board)
                     return not self.board.wturn
-                #if not x:
-                #   player.player(self.board) 
-                if x==1 or x==2:
+                print(self.board)
+                if not x:
+                    player.player(self.board) 
+                elif x==1 or x==2:
                     AI.get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, wboard, bboard)
                     self.board.wturn = not self.board.wturn
                 else:
@@ -155,14 +172,33 @@ cdef class Amazons:
                     root._untried_actions = Board.fast_moves(self.board.board_view, root.token, root.qnumber)
                     MonteCarloTreeSearchNode.best_action(root,self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id)
                     self.board.wturn = not self.board.wturn
-                print(self.board)
+                
+
+'''
+    @Class: 
+        Board 
+    @constructor args: 
+        size : board size n
+        white_init :  transformed coordinates of white amazons vice versa for black
+
+    @class variables:
+        wturn       :   its whites turn
+        size        :   board size n
+        qnumber     :   count of amazons per side
+        board       :   game board -> 0=free    1= white    2=black     -1=Arrow/burned
+        board_view  :   Memview representation of board for perforance, see cython documentation 
+
+'''
 cdef class Board:
     cdef public:
         np.npy_bool wturn 
         unsigned short size, qnumber
         np.ndarray board
         short[:,::1] board_view
-
+    '''
+        @info:
+            utilizes the GIL for numpy
+    '''
     def __init__(self, size, white_init, black_init):
         self.wturn = True
         self.size = size
@@ -172,7 +208,15 @@ cdef class Board:
         self.board[tuple(zip(*black_init))] = 2       
         self.board_view = self.board
 
-    @staticmethod # max optimized 
+    '''
+        @args:
+            board memview,  player color 1 or 2, #amazons 
+        @return:
+            list of the amazon coordinates of the respected color
+        @info:
+            100% C - no GIL !
+    '''
+    @staticmethod 
     cdef _LinkedListStruct* get_queen_posn(short[:, ::1] a,short color, unsigned short num) nogil:
         cdef:
             unsigned short ind = 0
@@ -188,7 +232,14 @@ cdef class Board:
                     if ind==num:
                         return _head
                         
-    
+    '''
+        @args:
+            board memview,  coordinates of amazon
+        @return:
+            list of the amazon coordinates of the reachable fields
+        @info:
+            100% C - no GIL !
+    '''
     @staticmethod
     cdef _LinkedListStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*s) nogil: # 100%  optimized
         cdef:
@@ -261,7 +312,15 @@ cdef class Board:
         s.x=xi
         s.y=yi
         return  head
-   
+
+    '''
+        @args:
+            board memview,  player color 1 or 2, #amazons 
+        @return:
+            list of the possible moves for the player of the respected color
+        @info:
+            100% C - no GIL !
+    '''
     @staticmethod
     cdef _MovesStruct* fast_moves(short[:, ::1] board, unsigned short token, unsigned short qn) nogil:
         cdef:
@@ -367,9 +426,15 @@ cdef class Board:
             free(ptr)
         
         return _top
-      
-    
-   
+
+    '''
+        @args:
+            board memview,  player color 1 or 2, #amazons, operations memview 
+        @return:
+            returns True if color has lost else False
+        @info:
+            100% C - no GIL !
+    '''
     @staticmethod
     cdef np.npy_bool iswon(short[:, ::1] board ,short token, unsigned short qn, short [:,::1] ops)nogil:
 
@@ -402,14 +467,32 @@ cdef class Board:
             free(_ptr)
 
         return True
-
+    '''
+        @info:
+            requires the gil !
+    '''
     def __str__(self):
         return "{0}\n{1}".format(("   " + "  ".join([chr(ord("a") + y) for y in range(self.size)])), "\n".join(
             [(str(x + 1) + ("  " if x < 9 else " ")) + "  ".join(map(lambda x: ['■','.','W','B'][x+1], self.board[x])) for x in
              range(self.size - 1, -1, -1)]))
 
+'''
+    @class:
+        Heuristics
+    @info:
+        provides functions for the calculation of heuristic values
+        whole class 100% C - no GIL
+'''
 cdef class Heuristics:
     
+    '''
+        @args:
+            board memview, source coordinates, depth also number of moves required so far, heuristic board
+        @info:
+            function for Territorial evaluation
+        @return:
+            nothing, but updates the heuristic values in hboard if a field can be reached in less moves than noted
+    '''
     @staticmethod
     cdef _LinkedListStruct* getMovesInRadius(short[:,::1] boardx, _LinkedListStruct* ptr ,unsigned short depth, short[:,::1] boardh) nogil:
         cdef:
@@ -496,7 +579,15 @@ cdef class Heuristics:
         ptr.y=yi
         
         return _head
-    
+    '''
+        @args:
+            board memview, amazon coordinates, heuristic board
+        @info:
+            function for Territorial evaluation
+        @return:
+            nothing, but updates the heuristic values in hboard if a field can be reached in less moves than noted
+            utilizing BFS 
+    '''
     @staticmethod
     cdef void amazonBFS(short [:,::1] board, _LinkedListStruct*s, short[:,::1] hboard) nogil:
         cdef:
@@ -539,7 +630,14 @@ cdef class Heuristics:
         return
    
 
-    
+    '''
+        @args:
+            board memview, color of player maximizing, #of amazons per side, heuristic board white, heuristic board black
+        @info:
+            function for Territorial evaluation
+        @return:
+            the heuristic value for the maximizing player 
+    '''
     @staticmethod
     cdef DTYPE_t territorial_eval_heurisic(short[:,::1]board,short token,unsigned short qn, short[:,::1] wboard, short[:,::1] bboard)nogil:
         cdef:
@@ -594,7 +692,14 @@ cdef class Heuristics:
                                     ret -= 1.0
         return ret
    
-    
+    '''
+        @args:
+            board memview, color of player 1 or 2, # of amazons per side
+        @info:
+            function for mobility evaluation
+        @return:
+            the number of possible moves of player 1 or 2
+    '''
     @staticmethod
     cdef DTYPE_t move_count( short[:, ::1] board, unsigned short token, unsigned short qn) nogil:
         cdef:
@@ -697,8 +802,34 @@ cdef class Heuristics:
             free(ptr)
         return ret
 
+'''
+    @class:
+        AI ( Alpha Beta prunning)
+    @info:
+        provides functions for choosing the next move, utilizing alphabeta and heuristics
+        whole class 100% C - no GIL
+'''
 cdef class AI:
-   
+
+    '''
+        @args:
+            board memview, mode 1 or 2 -> see choosing heuristic, its white turn y/n?, # of amazons per side, operations, (TEH) heuristic board white and black
+        @info:
+            entrance function for alphabeta prunning
+
+            currently using the following optimizations:
+                -   depth = 8 not 2 for the endgame ( #possible moves < 50)
+                -   cutoffs
+                - *not anymore randomized playorder 
+                -   100% C for speed
+                -   move and undo move -> using only the original board not wasting space
+            open ideas:
+                -   move ordering
+                -   multithreading for calling instance of AB -> buying time for space
+
+        @return:
+            nothing but chooses the best move for wturn as the maximizing player and performs it
+    '''
     @staticmethod
     cdef void get_ai_move(short[:, ::1] board, int mode, np.npy_bool wturn, unsigned short qnumber, short[:,::1] ops,short[:,::1] wb,short[:,::1] bb) nogil:  
         cdef:
@@ -742,6 +873,14 @@ cdef class AI:
         free(best_move)
         return 
     
+    '''
+        @args:
+            board memview,  its white turn y/n?, # of amazons per side, depth of AB, alpha, beta, maximizing?, mode 1 or 2 -> see choosing heuristic,operations, (TEH) heuristic board white and black, origin color 
+        @info:
+            function for alphabeta prunning
+        @return:
+            the alphabeta values for the calling AB instance
+    '''
     @staticmethod
     cdef DTYPE_t alphabeta(short[:, ::1] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, DTYPE_t a, DTYPE_t b, np.npy_bool maximizing, int mode, short[:,::1] ops,short[:,::1] wb,short[:,::1] bb, np.npy_bool callerwturn )nogil:
         cdef:
@@ -754,7 +893,6 @@ cdef class AI:
                 heuval2 = Heuristics.move_count(board, 2, qn)
                 
                 if callerwturn:
-                    #if wturn:
                     return heuval1-heuval2
                 else:
                     return heuval2-heuval1
@@ -819,8 +957,23 @@ cdef class AI:
             free(_ptr)
         return score
 
+'''
+    @class:
+        AI ( Monte Carlo Tree Search)
+    @info:
+        provides functions for choosing the next move, utilizing MCTS
+        whole class 100% C - no GIL
+'''
 cdef class MonteCarloTreeSearchNode():
-   
+    
+    '''
+        @args:
+            calling MCTS node, board memview
+        @info:
+            function for MCTS
+        @return:
+            the next unexpanded child of the calling MCTS node
+    '''
     @staticmethod
     cdef _MCTS_Node* expand(_MCTS_Node* this, short[:,::1] board)nogil:
         cdef _MovesStruct* action = this._untried_actions
@@ -842,6 +995,14 @@ cdef class MonteCarloTreeSearchNode():
 
         return child_node 
 
+    '''
+        @args:
+            calling MCTS node, operations memview, board memview, copyboard memview, iteration+threadid for better seeding
+        @info:
+            function for MCTS
+        @return:
+            1 if the calling node wins the Rollout else -1
+    '''
     @staticmethod
     cdef short rollout(_MCTS_Node* this, short[:,::1] ops, short[:,::1] board, short[:,::1] copyb, int id)nogil:
         cdef:
@@ -881,6 +1042,14 @@ cdef class MonteCarloTreeSearchNode():
             free(action)
         return -1 if current_wturn == this.wturn else 1
 
+    '''
+        @args:
+            calling MCTS node, result of the rollout ,board memview
+        @info:
+            function for MCTS
+        @return:
+            nothing, but traverses back to the root, updating the nodes and reversing the moves (board) for space effiency
+    '''
     @staticmethod
     cdef void backpropagate(_MCTS_Node* this, short result, short[:,::1] board)nogil:
         
@@ -897,6 +1066,32 @@ cdef class MonteCarloTreeSearchNode():
             MonteCarloTreeSearchNode.backpropagate(this.parent, result, board)
         return
     
+    '''
+        @args:
+            parent wins, parent visits, child wins, child visits
+        @info:
+            function for MCTS
+        @return:
+            the UCB1 value for a child node : see paper []
+        @note:
+            could try a diffrent formula
+    '''
+    @staticmethod 
+    cdef DTYPE_t calculateUCB(DTYPE_t winsown, DTYPE_t countown, DTYPE_t winschild, DTYPE_t countchild ) nogil:
+        cdef:
+            DTYPE_t ratio_kid = winschild/countchild
+            DTYPE_t visits_log = log(countown)
+            DTYPE_t wurzel = sqrt((visits_log/countchild) * min(0.25, ratio_kid-(ratio_kid*ratio_kid), sqrt(2*visits_log/countchild)) )
+        return (ratio_kid + wurzel)
+
+    '''
+        @args:
+            calling MCTS node as parent, param ( not important for this UCB1 score but can be used for future versions including an exploration bonus)
+        @info:
+            function for MCTS
+        @return:
+            the best child node
+    '''
     @staticmethod
     cdef _MCTS_Node* best_child(_MCTS_Node* this, DTYPE_t c_param)nogil:
         cdef:
@@ -913,7 +1108,7 @@ cdef class MonteCarloTreeSearchNode():
             cw = c.wins
             cn = c._number_of_visits
             # paper score
-            score = calculateUCB(wins, _number_of_visits, cw, cn)
+            score = MonteCarloTreeSearchNode.calculateUCB(wins, _number_of_visits, cw, cn)
             
             if score > best_score:
                 best_score = score
@@ -923,6 +1118,14 @@ cdef class MonteCarloTreeSearchNode():
 
         return best
     
+    '''
+        @args:
+            calling MCTS node, param ( not important also see best_child()), operations memview, board memview
+        @info:
+            function for MCTS
+        @return:
+            the next node for the rollout 
+    '''
     @staticmethod
     cdef _MCTS_Node* tree_policy(_MCTS_Node* this, DTYPE_t c_param, short[:,::1] ops, short[:,::1] board)nogil:
         cdef:
@@ -940,6 +1143,14 @@ cdef class MonteCarloTreeSearchNode():
 
         return current_node
 
+    '''
+        @args:
+            calling MCTS node, how many games per turn, param ( not important also see best_child()), operations memview, board memview, boardcopy memview
+        @info:
+            function for MCTS - ENTRANCE
+        @return:
+            nothing but performs the best move according to the MCTS on the original board
+    '''
     @staticmethod
     cdef void best_action(_MCTS_Node * this, unsigned short simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb, int id)nogil:        
         cdef:
@@ -958,6 +1169,17 @@ cdef class MonteCarloTreeSearchNode():
         board[best.ax, best.ay] = -1
         MonteCarloTreeSearchNode.freetree(this)
         return
+    
+    '''
+        @args:
+            calling MCTS node
+        @info:
+            function for MCTS - utility
+        @return:
+            nothing but frees the Tree structure 
+        @note:
+            so far no leaks found via valgrind but they are still possible !
+    '''
     @staticmethod
     cdef void freetree(_MCTS_Node*root)nogil:
         cdef _MCTS_Node*children = root.children
@@ -978,9 +1200,24 @@ cdef class MonteCarloTreeSearchNode():
             free(root.move)
         free(root)
 
+'''
+        @args:
+            fen format move string
+        
+        @return:
+            board coordinate format tuple
+'''
 cpdef alphabet2num(pos_raw):
     return int(pos_raw[1:]) - 1, ord(pos_raw[0]) - ord('a')
 
+'''
+        @args:
+            threadID, Processqueue, #simulations, "nxn" for the respective file, A:mode 0 1 2 3, B:mode 0 1 2 3, MCTS: #simulations per turn
+        @info:
+            MAIN ENTRANCE
+        @return:
+            nothing but performs the simulations and stores the results in the queue
+'''
 def main(i,q, times,inputfile,A,B,MCTS):
     cdef int j = i
     cdef Amazons field
@@ -990,3 +1227,11 @@ def main(i,q, times,inputfile,A,B,MCTS):
         field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j+k)
         f += int(field.game())
     q.put(f)
+
+def simulate(times=3,inputfile="3x3",A=1,B=2,MCTS=10000):
+    import time
+    cdef Amazons field
+    stamp = time.time()
+    for _ in range(times):    
+        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,0)
+        print( field.game(), time.time()-stamp)

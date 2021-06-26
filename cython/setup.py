@@ -5,6 +5,6 @@ Cython.Compiler.Options.annotate = True
 import numpy
 
 setup(
-    ext_modules = cythonize(["amazons.pyx"]),
+    ext_modules = cythonize(["amazons.pyx", "player.pyx"]),
     include_dirs=[numpy.get_include()]
     )
