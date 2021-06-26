@@ -13,12 +13,12 @@ def main(times=1,inputfile= "4x4",A=3,B=3,MCTS=10000,cores=1):
     #B = int(input("B mode"))
     #MCTS = int(input("MCTS sim"))
     #cores = int(input("cores#"))
-    times=5
-    cores = 10
+    times=  13
+    cores = 4
     inputfile = "8x8"
     Alist = [1,3,1,3,1,3,2,3,2,3,2,3]
     Blist = [3,1,3,1,3,1,3,2,3,2,3,2]
-    MCTSl = [10000,10000,50000,50000,100000,100000,10000,10000,50000,50000,100000,100000]
+    MCTSl = [1000,1000,5000,5000,10000,10000,1000,1000,5000,5000,10000,10000]
     for x in range(len(Alist)):
         processes =[]
         q = multiprocessing.Queue()
