@@ -130,3 +130,7 @@ white wins: 12
 white wins: 40
 50A: 3B: 1MCTS: 100000
 8x81
+6220.455892562866
+white wins: 28
+50A: 2B: 3MCTS: 100000
+8x80
