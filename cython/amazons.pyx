@@ -1153,10 +1153,10 @@ cdef class MonteCarloTreeSearchNode():
             nothing but performs the best move according to the MCTS on the original board
     '''
     @staticmethod
-    cdef void best_action(_MCTS_Node * this, unsigned short simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb, int id)nogil:        
+    cdef void best_action(_MCTS_Node * this, unsigned long  simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb, int id)nogil:        
         cdef:
             short reward
-            unsigned short i
+            unsigned long i
             _MCTS_Node*v = NULL
             _MovesStruct* best = NULL
         for i in range(simulation_no):
