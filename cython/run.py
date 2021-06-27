@@ -13,8 +13,8 @@ def main(times=30,inputfile= "4x4",A=3,B=1,MCTS=1000,cores=2):
     #B = int(input("B mode"))
     #MCTS = int(input("MCTS sim"))
     #cores = int(input("cores#"))
-    times=  2
-    cores = 25
+    times=  10
+    cores = 5
     inputfile = "8x8"
     Alist = [2,3]
     Blist = [3,2]
