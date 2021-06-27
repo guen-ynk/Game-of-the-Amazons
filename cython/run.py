@@ -16,9 +16,9 @@ def main(times=30,inputfile= "4x4",A=3,B=1,MCTS=1000,cores=2):
     times=  5
     cores = 10
     inputfile = "8x8"
-    Alist = [1,3,2,3]
-    Blist = [3,1,3,2]
-    MCTSl = [100000,100000,100000,100000]
+    Alist = [2,3]
+    Blist = [3,2]
+    MCTSl = [100000,100000]
     #Alist = [A]
     #Blist = [B]
     #MCTSl =[MCTS]
