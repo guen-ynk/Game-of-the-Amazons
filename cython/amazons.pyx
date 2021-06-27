@@ -212,7 +212,7 @@ cdef class Board:
         @args:
             board memview,  player color 1 or 2, #amazons 
         @return:
-            list of the amazon coordinates of the respected color
+            list of the amazon coordinates of the respective color
         @info:
             100% C - no GIL !
     '''
@@ -317,7 +317,7 @@ cdef class Board:
         @args:
             board memview,  player color 1 or 2, #amazons 
         @return:
-            list of the possible moves for the player of the respected color
+            list of the possible moves for the player of the respective color
         @info:
             100% C - no GIL !
     '''
@@ -473,8 +473,9 @@ cdef class Board:
     '''
     def __str__(self):
         return "{0}\n{1}".format(("   " + "  ".join([chr(ord("a") + y) for y in range(self.size)])), "\n".join(
-            [(str(x + 1) + ("  " if x < 9 else " ")) + "  ".join(map(lambda x: ['■','.','W','B'][x+1], self.board[x])) for x in
+            [(str(x + 1) + ("  " if x < 9 else " ")) + "  ".join(map(lambda x: ['■','·','♕','♛'][x+1], self.board[x])) for x in
              range(self.size - 1, -1, -1)]))
+             
 
 '''
     @class:
