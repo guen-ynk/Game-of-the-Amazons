@@ -1,0 +1,10 @@
+fetch.djs linguist-vendored
+.gitattributes linguist-vendored
+.gitignore linguist-vendored
+LICENSE linguist-vendored
+README.md linguist-vendored
+package.json linguist-vendored
+*.pyx linguist-language=Cython
+*.txt linguist-language=Text
+
+
