@@ -4,6 +4,7 @@ fetch.djs linguist-vendored
 LICENSE linguist-vendored
 README.md linguist-vendored
 package.json linguist-vendored
+*.pyx linguist-vendored=false
 *.pyx linguist-language=Cython
 *.txt linguist-language=Text
 
