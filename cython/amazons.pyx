@@ -39,7 +39,7 @@ ctypedef np.float64_t DTYPE_t
 
 # coordinates list struct
 ctypedef struct _LinkedListStruct:
-    Py_ssize_t x,y
+    Py_ssize_t x,y, length
     _LinkedListStruct*next   
 
 # move coordinates list struct
@@ -60,7 +60,22 @@ ctypedef struct _MCTS_Node:
     _MCTS_Node* children 
     _MCTS_Node* next
     _MovesStruct* move
-    _MovesStruct*_untried_actions    
+    _MovesStruct*_untried_actions   
+
+# MCTS Node struct
+ctypedef struct _MCTS_Node_optimized:
+    # turn of player
+    np.npy_bool wturn 
+    # amazons count per side, player token
+    unsigned short qnumber, token
+    DTYPE_t wins, loses, _number_of_visits
+    
+    _MCTS_Node_optimized* parent
+    _MCTS_Node_optimized* children 
+    _MCTS_Node_optimized* next
+    _LinkedListStruct*s
+    _LinkedListStruct*d
+    _LinkedListStruct*_untried_actions   
 
 cdef _MCTS_Node* newnode(_MovesStruct*move, np.npy_bool wturn, unsigned short qnumber, _MCTS_Node*parent)nogil:
     cdef _MCTS_Node*obj = <_MCTS_Node*> malloc(sizeof(_MCTS_Node))
@@ -82,6 +97,32 @@ cdef _MCTS_Node* newnode(_MovesStruct*move, np.npy_bool wturn, unsigned short qn
     obj._untried_actions = NULL
        
     return obj
+
+cdef _MCTS_Node_optimized* newnodeo(_LinkedListStruct*s, _LinkedListStruct*d,np.npy_bool wturn, unsigned short qnumber, _MCTS_Node_optimized*parent, np.npy_bool arr)nogil:
+    cdef _MCTS_Node_optimized*obj = <_MCTS_Node_optimized*> malloc(sizeof(_MCTS_Node_optimized))
+
+    while not obj:
+        free(obj)
+        obj = <_MCTS_Node_optimized*> malloc(sizeof(_MCTS_Node_optimized))
+    
+    obj.token = 1 if wturn else 2
+    obj.wturn = wturn
+    obj.qnumber = qnumber
+    obj.wins = 0.0
+    obj.loses = 0.0
+    obj._number_of_visits = 0.0
+    obj.parent = parent
+    obj.children = NULL
+    obj.next = NULL
+    obj.s = s
+
+    if arr:
+        obj.d = NULL
+    else:
+        obj.d = d
+    obj._untried_actions = NULL
+       
+    return obj
    
 
 cdef _LinkedListStruct* add(_LinkedListStruct* _head, Py_ssize_t x, Py_ssize_t y) nogil: 
@@ -91,13 +132,16 @@ cdef _LinkedListStruct* add(_LinkedListStruct* _head, Py_ssize_t x, Py_ssize_t y
             obj = <_LinkedListStruct*> malloc(sizeof(_LinkedListStruct))
         obj.x = x
         obj.y = y
+        obj.length = 0
         obj.next = NULL 
 
         if _head is NULL:
             _head = obj
+            _head.length = 1
             return _head
         else:
             obj.next = _head
+            obj.length = _head.length+1
             return obj
 
 cdef _MovesStruct* push(_MovesStruct* _head, Py_ssize_t sx,Py_ssize_t sy,Py_ssize_t dx,Py_ssize_t dy,Py_ssize_t ax,Py_ssize_t ay )nogil: 
@@ -129,7 +173,8 @@ cdef class Amazons:
         list white_init, black_init
         public Board board
         public list player
-        int MCTS, id
+        unsigned long MCTS
+        int id
 
     def __init__(self, config="config.txt", A=1,B=1,MCTS=10000, j=1):
         info = open(config, "r")
@@ -150,11 +195,10 @@ cdef class Amazons:
             short [:,::1] ops = np.array([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]],dtype=np.short)
             short token
             Py_ssize_t bsize = self.board.board.shape[0]
-            short [:,::1] wboard = np.full((bsize,bsize), fill_value=999, dtype=np.short)  
-            short [:,::1] bboard = np.full((bsize,bsize), fill_value=999, dtype=np.short)
+            short [:,:,::1] hboard = np.full((4,bsize,bsize), fill_value=999, dtype=np.short)  
             short [:,::1] copyboard = np.empty((bsize, bsize), dtype=np.short)
             _MCTS_Node*root = NULL
-        
+            unsigned int param = (self.board.size**2)-(2*self.board.qnumber)
         while True:
             for n, x in enumerate(self.player):
                 token = 1 if self.board.wturn else 2
@@ -164,14 +208,15 @@ cdef class Amazons:
                 print(self.board)
                 if not x:
                     player.player(self.board) 
-                elif x==1 or x==2:
-                    AI.get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, wboard, bboard)
+                elif x==1 or x==2 or x==4:
+                    AI.get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, param)
                     self.board.wturn = not self.board.wturn
                 else:
                     root = newnode(NULL,self.board.wturn, self.board.qnumber, parent=NULL)
                     root._untried_actions = Board.fast_moves(self.board.board_view, root.token, root.qnumber)
                     MonteCarloTreeSearchNode.best_action(root,self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id)
                     self.board.wturn = not self.board.wturn
+                param-=1 
                 
 
 '''
@@ -582,6 +627,71 @@ cdef class Heuristics:
         return _head
     '''
         @args:
+            board memview, source coordinates, depth also number of moves required so far, heuristic board
+        @info:
+            function for Territorial evaluation
+        @return:
+            nothing, but updates the heuristic values in hboard if a field can be reached in less moves than noted
+    '''
+    @staticmethod
+    cdef _LinkedListStruct* kgetMovesInRadius(short[:,::1] boardx, _LinkedListStruct* ptr ,unsigned short depth, short[:,::1] boardh) nogil:
+        cdef:
+            Py_ssize_t lengthb,y, xi,yi
+            _LinkedListStruct*_head = NULL
+        lengthb = boardx.shape[0]
+        xi = ptr.x
+        yi = ptr.y
+        y = xi-1
+        if y>=0 and boardx[y,yi]==0 :
+            if boardh[y,yi]>depth:
+                boardh[y,yi]=depth
+                _head=add(_head, y, yi)
+        y=xi+1
+        if y<lengthb and boardx[y,yi]==0 :
+            if boardh[y,yi]>depth:
+                boardh[y,yi]=depth
+                _head= add(_head, y, yi)
+        y=yi-1
+        if y>=0 and  boardx[xi,y]==0 :
+            if boardh[xi,y]>depth:
+                boardh[xi,y]=depth
+                _head= add(_head, xi, y)
+        y=yi+1
+        if y<lengthb and boardx[xi,y]==0 :
+            if boardh[xi,y]>depth:
+                boardh[xi,y]=depth
+                _head= add(_head, xi, y)
+         
+        ptr.x-= 1
+        ptr.y-= 1
+        if ptr.x>=0 and ptr.y>=0 and boardx[ptr.x,ptr.y]==0:
+            if boardh[ptr.x,ptr.y]>depth:
+                boardh[ptr.x,ptr.y]=depth
+                _head= add(_head, ptr.x, ptr.y)
+        ptr.y=yi+1
+        if ptr.x>=0 and ptr.y<lengthb and boardx[ptr.x,ptr.y]==0:
+            if boardh[ptr.x,ptr.y]>depth:
+                boardh[ptr.x,ptr.y]=depth
+                _head= add(_head, ptr.x, ptr.y)
+                
+        ptr.x=xi+1
+        ptr.y=yi-1
+        if ptr.y>=0 and ptr.x<lengthb and boardx[ptr.x,ptr.y]==0:
+            if boardh[ptr.x,ptr.y]>depth:
+                boardh[ptr.x,ptr.y]=depth
+                _head= add(_head, ptr.x, ptr.y)
+                    
+        ptr.y=yi+1           
+        if ptr.x<lengthb and ptr.y<lengthb and boardx[ptr.x,ptr.y]==0:
+            if boardh[ptr.x,ptr.y]>depth:
+                boardh[ptr.x,ptr.y]=depth
+                _head= add(_head, ptr.x, ptr.y)
+        ptr.x=xi
+        ptr.y=yi
+        
+        return _head
+    '''
+        @args:
             board memview, amazon coordinates, heuristic board
         @info:
             function for Territorial evaluation
@@ -629,6 +739,55 @@ cdef class Heuristics:
             if _head is NULL:
                 break
         return
+    '''
+        @args:
+            board memview, amazon coordinates, heuristic board
+        @info:
+            function for Territorial evaluation
+        @return:
+            nothing, but updates the heuristic values in hboard if a field can be reached in less moves than noted
+            utilizing BFS 
+    '''
+    @staticmethod
+    cdef void kingBFS(short [:,::1] board, _LinkedListStruct*s, short[:,::1] hboard) nogil:
+        cdef:
+            Py_ssize_t x,length,dl
+            _LinkedListStruct* _head = NULL         # BFS HEAD
+            _LinkedListStruct* _ebenehead = NULL    # BFS TEMPORARY NEW
+            _LinkedListStruct* _ptr = NULL             
+            _LinkedListStruct* _tail = NULL
+            
+        length = board.shape[0]
+        dl = length*length
+       
+
+        _head = add(_head, s.x,s.y) 
+    
+        for x in range(1, dl):
+            _ptr = NULL         
+            _ebenehead = NULL
+          
+            while _head is not NULL: 
+
+                _ptr = Heuristics.kgetMovesInRadius(board, _head, x, hboard)
+
+                if _ptr is not NULL:
+                    if _ebenehead is NULL:
+                        _ebenehead = _ptr 
+                    else:
+                        _tail = _ebenehead
+                        # anfügen der nächstes BFS iteration
+                        while _tail.next is not NULL:
+                            _tail = _tail.next
+                        _tail.next = _ptr
+
+                _ptr = _head
+                _head = _head.next 
+                free(_ptr) 
+            _head = _ebenehead 
+            if _head is NULL:
+                break
+        return
    
 
     '''
@@ -640,7 +799,7 @@ cdef class Heuristics:
             the heuristic value for the maximizing player 
     '''
     @staticmethod
-    cdef DTYPE_t territorial_eval_heurisic(short[:,::1]board,short token,unsigned short qn, short[:,::1] wboard, short[:,::1] bboard)nogil:
+    cdef DTYPE_t territorial_eval_heurisic(short[:,::1]board,short token,unsigned short qn, short[:,:,::1] hboard)nogil:
         cdef:
             Py_ssize_t i,j,d
             unsigned short pl = 1
@@ -651,11 +810,11 @@ cdef class Heuristics:
         d = 1
         for i in range(board.shape[0]):
             for j in range(board.shape[0]):
-                bboard[i,j] = 999
-                wboard[i,j] = 999
+                hboard[0,i,j] = 999 # quenns white
+                hboard[1,i,j] = 999 # quuens black
       
         while _queenshead is not NULL:
-            Heuristics.amazonBFS(board, _queenshead, wboard)
+            Heuristics.amazonBFS(board, _queenshead, hboard[0])
             _ptr = _queenshead
             _queenshead = _queenshead.next
             free(_ptr)
@@ -664,7 +823,7 @@ cdef class Heuristics:
         _queenshead =  Board.get_queen_posn(board, pl, qn)
 
         while _queenshead is not NULL:
-            Heuristics.amazonBFS(board, _queenshead, bboard)
+            Heuristics.amazonBFS(board, _queenshead, hboard[1])
             _ptr = _queenshead
             _queenshead = _queenshead.next
             free(_ptr)
@@ -674,23 +833,110 @@ cdef class Heuristics:
                     if board[i,j] != 0:
                         continue
                     if token ==1:
-                        if wboard[i,j] == bboard[i,j]:  
-                            if wboard[i,j] != 999:
+                        if hboard[i,j,0] == hboard[i,j,1]:  
+                            if hboard[i,j,0] != 999:
                                 ret += 0.2
                         else: 
-                            if wboard[i,j] < bboard[i,j]:
+                            if hboard[i,j,0] < hboard[i,j,1]:
                                     ret += 1.0
                             else:
                                     ret -= 1.0
                     else:
-                        if wboard[i,j] == bboard[i,j]:  
-                            if bboard[i,j] != 999:
+                        if hboard[i,j,0] == hboard[i,j,1]:  
+                            if hboard[i,j,1] != 999:
                                     ret += 0.2
                         else: 
-                            if bboard[i,j] < wboard[i,j]:
+                            if hboard[i,j,1] < hboard[i,j,0]:
                                     ret += 1.0
                             else:
                                     ret -= 1.0
+        return ret
+    '''
+        @args:
+            board memview, color of player maximizing, #of amazons per side, heuristic board white, heuristic board black
+        @info:
+            function for Territorial evaluation
+        @return:
+            the heuristic value for the maximizing player 
+    '''
+    @staticmethod
+    cdef DTYPE_t territorial_eval_heurisick(short[:,::1]board,short token,unsigned short qn, short[:,:,::1] hboard, unsigned int param)nogil:
+        param = max(1,param)
+        cdef:
+            Py_ssize_t i,j,d
+            unsigned short pl = 1
+
+            DTYPE_t ret = 0.0      
+            DTYPE_t retk = 0.0  
+            DTYPE_t p = (board.shape[0]**2) /  param
+            _LinkedListStruct* _queenshead =  Board.get_queen_posn(board, pl, qn)
+            _LinkedListStruct*_ptr = NULL
+        d = 1
+        for i in range(board.shape[0]):
+            for j in range(board.shape[0]):
+                hboard[0,i,j] = 999 # quenns white
+                hboard[1,i,j] = 999 # quuens black
+                hboard[2,i,j] = 999 # kings white
+                hboard[3,i,j] = 999 # kings black
+       
+        while _queenshead is not NULL:
+            Heuristics.amazonBFS(board, _queenshead, hboard[0])
+            Heuristics.kingBFS(board, _queenshead, hboard[2])
+
+            _ptr = _queenshead
+            _queenshead = _queenshead.next
+            free(_ptr)
+ 
+        pl = 2
+        _queenshead =  Board.get_queen_posn(board, pl, qn)
+
+        while _queenshead is not NULL:
+            Heuristics.amazonBFS(board, _queenshead, hboard[1])
+            Heuristics.kingBFS(board, _queenshead, hboard[3])
+            _ptr = _queenshead
+            _queenshead = _queenshead.next
+            free(_ptr)
+       
+        for i in range(board.shape[0]):
+            for j in range(board.shape[0]):
+                    if board[i,j] != 0:
+                        continue
+                    if token ==1:
+                        if hboard[0,i,j] == hboard[1,i,j]:  
+                            if hboard[0,i,j] != 999:
+                                ret += 0.2
+                        else: 
+                            if hboard[0,i,j] < hboard[1,i,j]:
+                                    ret += 1.0
+                            else:
+                                    ret -= 1.0
+                        if hboard[2,i,j] == hboard[3,i,j]:  
+                            if hboard[2,i,j] != 999:
+                                retk += 0.2
+                        else: 
+                            if hboard[2,i,j] < hboard[3,i,j]:
+                                    retk += 1.0
+                            else:
+                                    retk -= 1.0
+                    else:
+                        if hboard[0,i,j] == hboard[1,i,j]:  
+                            if hboard[1,i,j] != 999:
+                                    ret += 0.2
+                        else: 
+                            if hboard[1,i,j] < hboard[0,i,j]:
+                                    ret += 1.0
+                            else:
+                                    ret -= 1.0
+                        if hboard[2,i,j] == hboard[3,i,j]:  
+                            if hboard[3,i,j] != 999:
+                                    retk += 0.2
+                        else: 
+                            if hboard[3,i,j] < hboard[2,i,j]:
+                                    retk += 1.0
+                            else:
+                                    retk -= 1.0
+        ret = (p*retk)+((1-p)*ret)
+    
         return ret
    
     '''
@@ -832,7 +1078,7 @@ cdef class AI:
             nothing but chooses the best move for wturn as the maximizing player and performs it
     '''
     @staticmethod
-    cdef void get_ai_move(short[:, ::1] board, int mode, np.npy_bool wturn, unsigned short qnumber, short[:,::1] ops,short[:,::1] wb,short[:,::1] bb) nogil:  
+    cdef void get_ai_move(short[:, ::1] board, int mode, np.npy_bool wturn, unsigned short qnumber, short[:,::1] ops,short[:,:,::1] hb, unsigned int param) nogil:  
         cdef:
             DTYPE_t best_score = -1000000.0
             DTYPE_t rbest_score = 1000000.0
@@ -852,7 +1098,7 @@ cdef class AI:
             board[_head.sx,_head.sy] = 0
             board[_head.ax,_head.ay] = -1
 
-            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, rbest_score, False, mode, ops,wb,bb, wturn)
+            score = AI.alphabeta(board,not wturn, qnumber, 2, best_score, rbest_score, False, mode, ops, hb, wturn, param-1)
             # undo 
             board[_head.ax,_head.ay] = 0
             board[_head.dx,_head.dy] = 0
@@ -883,7 +1129,7 @@ cdef class AI:
             the alphabeta values for the calling AB instance
     '''
     @staticmethod
-    cdef DTYPE_t alphabeta(short[:, ::1] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, DTYPE_t a, DTYPE_t b, np.npy_bool maximizing, int mode, short[:,::1] ops,short[:,::1] wb,short[:,::1] bb, np.npy_bool callerwturn )nogil:
+    cdef DTYPE_t alphabeta(short[:, ::1] board,np.npy_bool wturn, unsigned short qn, unsigned short depth, DTYPE_t a, DTYPE_t b, np.npy_bool maximizing, int mode, short[:,::1] ops,short[:,:,::1] hb, np.npy_bool callerwturn, unsigned int param)nogil:
         cdef:
             DTYPE_t heuval1,heuval2
             short token = 1 if wturn else 2
@@ -898,12 +1144,16 @@ cdef class AI:
                 else:
                     return heuval2-heuval1
 
+            elif mode == 2:
+                if callerwturn:
+                    return Heuristics.territorial_eval_heurisic(board, 1, qn,hb)
+                else:
+                    return Heuristics.territorial_eval_heurisic(board, 2, qn,hb)
             else:
                 if callerwturn:
-                    return Heuristics.territorial_eval_heurisic(board, 1, qn,wb,bb)
+                    return Heuristics.territorial_eval_heurisick(board, 1, qn,hb, param)
                 else:
-                    return Heuristics.territorial_eval_heurisic(board, 2, qn,wb,bb)
-                  
+                    return Heuristics.territorial_eval_heurisick(board, 2, qn,hb, param)
         cdef:
             DTYPE_t score = 0.0
             _MovesStruct*_ptr = NULL
@@ -917,7 +1167,7 @@ cdef class AI:
                 board[_head.sx,_head.sy] = 0
                 board[_head.ax,_head.ay] = -1
 
-                score = AI.alphabeta(board, not wturn, qn, depth - 1, a, b, False, mode,ops,wb,bb, callerwturn)
+                score = AI.alphabeta(board, not wturn, qn, depth - 1, a, b, False, mode,ops,hb, callerwturn, param-1)
                 
                 # undo 
                 board[_head.ax,_head.ay] = 0
@@ -938,7 +1188,7 @@ cdef class AI:
                 board[_head.sx,_head.sy] = 0
                 board[_head.ax,_head.ay] = -1
 
-                score = AI.alphabeta(board,not wturn, qn, depth - 1, a, b, True, mode,ops,wb,bb, callerwturn)
+                score = AI.alphabeta(board,not wturn, qn, depth - 1, a, b, True, mode,ops,hb, callerwturn, param-1)
                 
                 # undo 
                 board[_head.ax,_head.ay] = 0
@@ -1082,7 +1332,8 @@ cdef class MonteCarloTreeSearchNode():
         cdef:
             DTYPE_t ratio_kid = winschild/countchild
             DTYPE_t visits_log = log(countown)
-            DTYPE_t wurzel = sqrt((visits_log/countchild) * min(0.25, ratio_kid-(ratio_kid*ratio_kid), sqrt(2*visits_log/countchild)) )
+            DTYPE_t vrtl = 0.25
+            DTYPE_t wurzel = sqrt((visits_log/countchild) * min(vrtl,ratio_kid-(ratio_kid*ratio_kid), sqrt(2*visits_log/countchild)) )
         return (ratio_kid + wurzel)
 
     '''
