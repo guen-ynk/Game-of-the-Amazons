@@ -1,10 +1,6 @@
-fetch.djs linguist-vendored
-.gitattributes linguist-vendored
-.gitignore linguist-vendored
-LICENSE linguist-vendored
-README.md linguist-vendored
-package.json linguist-vendored
-*.pyx linguist-language=Cython
-*.txt linguist-language=Text
+*.pyx linguist-vendored=false
+*.pyx linguist-language=cythonC
+*.ipynb linguist-vendored=true
+
 
 
