@@ -872,10 +872,10 @@ cdef class Heuristics:
             DTYPE_t w1,w2,w3,w4
             _LinkedListStruct* _queenshead =  Board.get_queen_posn(board, pl, qn)
             _LinkedListStruct*_ptr = NULL
-        w1 = .6*p
+        w1 = .7*p
         w2 = .3*p
         w3 = .3*(1-p)
-        w4 = .4*(1-p)
+        w4 = .7*(1-p)
                 
         d = 1
         for i in range(board.shape[0]):
