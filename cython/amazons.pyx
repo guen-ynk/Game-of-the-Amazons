@@ -860,7 +860,7 @@ cdef class Heuristics:
     '''
     @staticmethod
     cdef DTYPE_t territorial_eval_heurisick(short[:,::1]board,short token,unsigned short qn, short[:,:,::1] hboard, unsigned int param)nogil:
-        param = max(1,param)
+       # param = max(1,param)
         cdef:
             Py_ssize_t i,j,d
             unsigned short pl = 1
@@ -868,7 +868,7 @@ cdef class Heuristics:
             DTYPE_t retk = 0.0  
             DTYPE_t c1 = 0.0
             DTYPE_t c2 = 0.0
-            DTYPE_t p = (board.shape[0]**2) /  param
+            DTYPE_t p = param/ (board.shape[0]**2) 
             DTYPE_t w1,w2,w3,w4
             _LinkedListStruct* _queenshead =  Board.get_queen_posn(board, pl, qn)
             _LinkedListStruct*_ptr = NULL
