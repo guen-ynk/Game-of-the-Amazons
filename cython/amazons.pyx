@@ -803,7 +803,6 @@ cdef class Heuristics:
         cdef:
             Py_ssize_t i,j,d
             unsigned short pl = 1
-
             DTYPE_t ret = 0.0        
             _LinkedListStruct* _queenshead =  Board.get_queen_posn(board, pl, qn)
             _LinkedListStruct*_ptr = NULL
@@ -865,79 +864,93 @@ cdef class Heuristics:
         cdef:
             Py_ssize_t i,j,d
             unsigned short pl = 1
-
             DTYPE_t ret = 0.0      
             DTYPE_t retk = 0.0  
+            DTYPE_t c1 = 0.0
+            DTYPE_t c2 = 0.0
             DTYPE_t p = (board.shape[0]**2) /  param
+            DTYPE_t w1,w2,w3,w4
             _LinkedListStruct* _queenshead =  Board.get_queen_posn(board, pl, qn)
             _LinkedListStruct*_ptr = NULL
+        w1 = .6*p
+        w2 = .3*p
+        w3 = .3*(1-p)
+        w4 = .4*(1-p)
+                
         d = 1
         for i in range(board.shape[0]):
             for j in range(board.shape[0]):
-                hboard[0,i,j] = 999 # quenns white
-                hboard[1,i,j] = 999 # quuens black
-                hboard[2,i,j] = 999 # kings white
-                hboard[3,i,j] = 999 # kings black
-       
+                    hboard[0,i,j] = 999 # quenns white
+                    hboard[1,i,j] = 999 # quuens black
+                    hboard[2,i,j] = 999 # kings white
+                    hboard[3,i,j] = 999 # kings black
+        
         while _queenshead is not NULL:
-            Heuristics.amazonBFS(board, _queenshead, hboard[0])
-            Heuristics.kingBFS(board, _queenshead, hboard[2])
+                Heuristics.amazonBFS(board, _queenshead, hboard[0])
+                Heuristics.kingBFS(board, _queenshead, hboard[2])
 
-            _ptr = _queenshead
-            _queenshead = _queenshead.next
-            free(_ptr)
- 
+                _ptr = _queenshead
+                _queenshead = _queenshead.next
+                free(_ptr)
+    
         pl = 2
         _queenshead =  Board.get_queen_posn(board, pl, qn)
 
         while _queenshead is not NULL:
-            Heuristics.amazonBFS(board, _queenshead, hboard[1])
-            Heuristics.kingBFS(board, _queenshead, hboard[3])
-            _ptr = _queenshead
-            _queenshead = _queenshead.next
-            free(_ptr)
-       
+                Heuristics.amazonBFS(board, _queenshead, hboard[1])
+                Heuristics.kingBFS(board, _queenshead, hboard[3])
+                _ptr = _queenshead
+                _queenshead = _queenshead.next
+                free(_ptr)
+        
         for i in range(board.shape[0]):
-            for j in range(board.shape[0]):
-                    if board[i,j] != 0:
-                        continue
-                    if token ==1:
-                        if hboard[0,i,j] == hboard[1,i,j]:  
-                            if hboard[0,i,j] != 999:
-                                ret += 0.2
-                        else: 
-                            if hboard[0,i,j] < hboard[1,i,j]:
-                                    ret += 1.0
-                            else:
-                                    ret -= 1.0
-                        if hboard[2,i,j] == hboard[3,i,j]:  
-                            if hboard[2,i,j] != 999:
-                                retk += 0.2
-                        else: 
-                            if hboard[2,i,j] < hboard[3,i,j]:
-                                    retk += 1.0
-                            else:
-                                    retk -= 1.0
-                    else:
-                        if hboard[0,i,j] == hboard[1,i,j]:  
-                            if hboard[1,i,j] != 999:
+                for j in range(board.shape[0]):
+                        if board[i,j] != 0:
+                            continue
+                        if token ==1:
+                            if hboard[0,i,j] == hboard[1,i,j]:  
+                                if hboard[0,i,j] != 999:
                                     ret += 0.2
-                        else: 
-                            if hboard[1,i,j] < hboard[0,i,j]:
-                                    ret += 1.0
-                            else:
-                                    ret -= 1.0
-                        if hboard[2,i,j] == hboard[3,i,j]:  
-                            if hboard[3,i,j] != 999:
+                            else: 
+                                if hboard[0,i,j] < hboard[1,i,j]:
+                                        ret += 1.0
+                                else:
+                                        ret -= 1.0
+                            if hboard[2,i,j] == hboard[3,i,j]:  
+                                if hboard[2,i,j] != 999:
                                     retk += 0.2
-                        else: 
-                            if hboard[3,i,j] < hboard[2,i,j]:
-                                    retk += 1.0
-                            else:
-                                    retk -= 1.0
-        ret = (p*retk)+((1-p)*ret)
-    
+                            else: 
+                                if hboard[2,i,j] < hboard[3,i,j]:
+                                        retk += 1.0
+                                else:
+                                        retk -= 1.0
+                            c1 +=  (2.0**-hboard[0,i,j])-(2.0**-hboard[1,i,j])
+                            c2 += min(1,max(-1, (hboard[3,i,j]-hboard[2,i,j])/6))
+        
+                        else:
+                            if hboard[0,i,j] == hboard[1,i,j]:  
+                                if hboard[1,i,j] != 999:
+                                        ret += 0.2
+                            else: 
+                                if hboard[1,i,j] < hboard[0,i,j]:
+                                        ret += 1.0
+                                else:
+                                        ret -= 1.0
+                            if hboard[2,i,j] == hboard[3,i,j]:  
+                                if hboard[3,i,j] != 999:
+                                        retk += 0.2
+                            else: 
+                                if hboard[3,i,j] < hboard[2,i,j]:
+                                        retk += 1.0
+                                else:
+                                        retk -= 1.0
+                            c1 += (2.0**-hboard[1,i,j])-(2.0**-hboard[0,i,j])
+                            c2 += min(1,max(-1, (hboard[2,i,j]-hboard[3,i,j])/6))
+        ret = (w1*ret)+(w2*c1)+(w3*retk)+(w4*c2)
         return ret
+
+        #ret = (ret+(retk*p))
+    
    
     '''
         @args:
