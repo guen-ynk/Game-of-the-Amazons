@@ -51,9 +51,9 @@ ctypedef struct _MovesStruct:
 # MCTS Node struct
 ctypedef struct _MCTS_Node:
     # turn of player
-    np.npy_bool wturn 
+    np.npy_bool wturn, backwturn
     # amazons count per side, player token
-    unsigned short qnumber, token
+    unsigned short qnumber, token, backtoken, num
     DTYPE_t wins, loses, _number_of_visits
     
     _MCTS_Node* parent
@@ -61,21 +61,7 @@ ctypedef struct _MCTS_Node:
     _MCTS_Node* next
     _MovesStruct* move
     _MovesStruct*_untried_actions   
-
-# MCTS Node struct
-ctypedef struct _MCTS_Node_optimized:
-    # turn of player
-    np.npy_bool wturn 
-    # amazons count per side, player token
-    unsigned short qnumber, token
-    DTYPE_t wins, loses, _number_of_visits
     
-    _MCTS_Node_optimized* parent
-    _MCTS_Node_optimized* children 
-    _MCTS_Node_optimized* next
-    _LinkedListStruct*s
-    _LinkedListStruct*d
-    _LinkedListStruct*_untried_actions   
 
 cdef _MCTS_Node* newnode(_MovesStruct*move, np.npy_bool wturn, unsigned short qnumber, _MCTS_Node*parent)nogil:
     cdef _MCTS_Node*obj = <_MCTS_Node*> malloc(sizeof(_MCTS_Node))
@@ -85,7 +71,9 @@ cdef _MCTS_Node* newnode(_MovesStruct*move, np.npy_bool wturn, unsigned short qn
         obj = <_MCTS_Node*> malloc(sizeof(_MCTS_Node))
     
     obj.token = 1 if wturn else 2
+    obj.backtoken = 2 if wturn else 1
     obj.wturn = wturn
+    obj.backwturn = not wturn
     obj.qnumber = qnumber
     obj.wins = 0.0
     obj.loses = 0.0
@@ -93,37 +81,11 @@ cdef _MCTS_Node* newnode(_MovesStruct*move, np.npy_bool wturn, unsigned short qn
     obj.parent = parent
     obj.children = NULL
     obj.next = NULL
+    obj.num = 0
     obj.move = move
     obj._untried_actions = NULL
        
     return obj
-
-cdef _MCTS_Node_optimized* newnodeo(_LinkedListStruct*s, _LinkedListStruct*d,np.npy_bool wturn, unsigned short qnumber, _MCTS_Node_optimized*parent, np.npy_bool arr)nogil:
-    cdef _MCTS_Node_optimized*obj = <_MCTS_Node_optimized*> malloc(sizeof(_MCTS_Node_optimized))
-
-    while not obj:
-        free(obj)
-        obj = <_MCTS_Node_optimized*> malloc(sizeof(_MCTS_Node_optimized))
-    
-    obj.token = 1 if wturn else 2
-    obj.wturn = wturn
-    obj.qnumber = qnumber
-    obj.wins = 0.0
-    obj.loses = 0.0
-    obj._number_of_visits = 0.0
-    obj.parent = parent
-    obj.children = NULL
-    obj.next = NULL
-    obj.s = s
-
-    if arr:
-        obj.d = NULL
-    else:
-        obj.d = d
-    obj._untried_actions = NULL
-       
-    return obj
-   
 
 cdef _LinkedListStruct* add(_LinkedListStruct* _head, Py_ssize_t x, Py_ssize_t y) nogil: 
         cdef _LinkedListStruct*obj = <_LinkedListStruct*> malloc(sizeof(_LinkedListStruct))
@@ -138,6 +100,7 @@ cdef _LinkedListStruct* add(_LinkedListStruct* _head, Py_ssize_t x, Py_ssize_t y
         if _head is NULL:
             _head = obj
             _head.length = 1
+            _head.next = NULL
             return _head
         else:
             obj.next = _head
@@ -198,6 +161,8 @@ cdef class Amazons:
             short [:,:,::1] hboard = np.full((4,bsize,bsize), fill_value=999, dtype=np.short)  
             short [:,::1] copyboard = np.empty((bsize, bsize), dtype=np.short)
             _MCTS_Node*root = NULL
+            _MCTS_Node*rooto = NULL
+            _LinkedListStruct*amazon = NULL
             unsigned int param = (self.board.size**2)-(2*self.board.qnumber)
         while True:
             for n, x in enumerate(self.player):
@@ -206,15 +171,23 @@ cdef class Amazons:
                     print(self.board)
                     return not self.board.wturn
                 print(self.board)
+
                 if not x:
                     player.player(self.board) 
                 elif x==1 or x==2 or x==4:
                     AI.get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, param)
                     self.board.wturn = not self.board.wturn
                 else:
-                    root = newnode(NULL,self.board.wturn, self.board.qnumber, parent=NULL)
-                    root._untried_actions = Board.fast_moves(self.board.board_view, root.token, root.qnumber)
-                    MonteCarloTreeSearchNode.best_action(root,self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id)
+                    if x==3:
+                        root = newnode(NULL,self.board.wturn, self.board.qnumber, parent=NULL)
+                        root._untried_actions = Board.fast_moves(self.board.board_view, root.token, root.qnumber)
+                        MonteCarloTreeSearchNode.best_action(root,self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id)
+                    else:
+                        rooto = newnode(NULL,self.board.wturn, self.board.qnumber, parent=NULL)
+                        amazon = Board.get_queen_posn(self.board.board_view, 1 if self.board.wturn else 2, self.board.qnumber)
+                        amazon = MonteCarloTreeSearchNodeOptimized.filteramazons(amazon, rooto.backtoken, self.board.board_view)
+                        rooto._untried_actions = MonteCarloTreeSearchNodeOptimized.get_amazon_moves(self.board.board_view, amazon)
+                        MonteCarloTreeSearchNodeOptimized.best_action(rooto,2*self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id)
                     self.board.wturn = not self.board.wturn
                 param-=1 
                 
@@ -1244,11 +1217,11 @@ cdef class MonteCarloTreeSearchNode():
 
         this._untried_actions = this._untried_actions.next
         board[action.dx, action.dy] = this.token
-        board[action.sx, action.sy] = 0 
+        board[action.sx, action.sy] =  0 
         board[action.ax, action.ay] = -1
 
 
-        cdef _MCTS_Node* child_node = newnode(action, this.wturn,this.qnumber, parent=this)##ERRR
+        cdef _MCTS_Node* child_node = newnode(action, not this.wturn,this.qnumber, parent=this)##ERRR
         child_node._untried_actions = Board.fast_moves(board, child_node.token, child_node.qnumber)
 
         if this.children is NULL:
@@ -1268,7 +1241,7 @@ cdef class MonteCarloTreeSearchNode():
             1 if the calling node wins the Rollout else -1
     '''
     @staticmethod
-    cdef short rollout(_MCTS_Node* this, short[:,::1] ops, short[:,::1] board, short[:,::1] copyb, int id)nogil:
+    cdef short rollout(_MCTS_Node* this, short[:,::1] ops, short[:,::1] board, short[:,::1] copyb, int id, np.npy_bool wturn)nogil:
         cdef:
             _MovesStruct*possible_moves= NULL
             _MovesStruct*ptr = NULL
@@ -1304,7 +1277,7 @@ cdef class MonteCarloTreeSearchNode():
             current_wturn = not current_wturn
             token = 1 if current_wturn else 2
             free(action)
-        return -1 if current_wturn == this.wturn else 1
+        return -1 if current_wturn == wturn else 1
 
     '''
         @args:
@@ -1315,19 +1288,24 @@ cdef class MonteCarloTreeSearchNode():
             nothing, but traverses back to the root, updating the nodes and reversing the moves (board) for space effiency
     '''
     @staticmethod
-    cdef void backpropagate(_MCTS_Node* this, short result, short[:,::1] board)nogil:
-        
+    cdef void backpropagate(_MCTS_Node* this, short result, short[:,::1] board, np.npy_bool wturn)nogil:
         this._number_of_visits +=1.0
-        if result == 1:
-            this.wins+=1.0
+        if this.wturn == wturn:
+            if result == 1:
+                this.loses+=1.0
+            else:
+                this.wins+=1.0
         else:
-            this.loses+=1.0
+            if result == 1:
+                this.wins+=1.0
+            else:
+                this.loses+=1.0
         if this.move is not NULL:
             board[this.move.ax,this.move.ay] = 0
             board[this.move.dx,this.move.dy] = 0
-            board[this.move.sx,this.move.sy] = this.token
+            board[this.move.sx,this.move.sy] = this.backtoken
         if this.parent is not NULL:
-            MonteCarloTreeSearchNode.backpropagate(this.parent, result, board)
+            MonteCarloTreeSearchNode.backpropagate(this.parent, result, board, wturn)
         return
     
     '''
@@ -1399,10 +1377,13 @@ cdef class MonteCarloTreeSearchNode():
         while not Board.iswon(board, current_node.token, current_node.qnumber, ops):#hier
 
             if current_node._untried_actions is not NULL:
+         
                 return MonteCarloTreeSearchNode.expand(current_node, board)
             else:
+        
                 current_node = MonteCarloTreeSearchNode.best_child(current_node, c_param)
-                board[current_node.move.dx, current_node.move.dy] = current_node.token
+          
+                board[current_node.move.dx, current_node.move.dy] = current_node.backtoken
                 board[current_node.move.sx, current_node.move.sy] = 0 
                 board[current_node.move.ax, current_node.move.ay] = -1
 
@@ -1422,12 +1403,18 @@ cdef class MonteCarloTreeSearchNode():
             short reward
             unsigned long i
             _MCTS_Node*v = NULL
+         
             _MovesStruct* best = NULL
         for i in range(simulation_no):
+          
             v = MonteCarloTreeSearchNode.tree_policy(this,c_param, ops, board)
-            reward = MonteCarloTreeSearchNode.rollout(v, ops, board, copyb, id)
-            MonteCarloTreeSearchNode.backpropagate(v, reward, board)   
+            
+            reward = MonteCarloTreeSearchNode.rollout(v, ops, board, copyb, id,this.wturn)
+         
+            MonteCarloTreeSearchNode.backpropagate(v, reward, board, this.wturn)   
+    
         v = MonteCarloTreeSearchNode.best_child(this, c_param)
+       
         best =  v.move
         board[best.dx, best.dy] = this.token
         board[best.sx, best.sy] = 0 
@@ -1464,7 +1451,749 @@ cdef class MonteCarloTreeSearchNode():
         if root.move is not NULL:
             free(root.move)
         free(root)
+  
 
+cdef class MonteCarloTreeSearchNodeOptimized():
+    '''
+        @args:
+            board memview,  coordinates of amazon
+        @return:
+            list of the amazon coordinates of the reachable fields
+        @info:
+            100% C - no GIL !
+    '''
+    @staticmethod
+    cdef _LinkedListStruct* get_nopath(short[:, ::1] boardx, _LinkedListStruct*s, short color) nogil: # 100%  optimized
+        cdef:
+            _LinkedListStruct*head = NULL
+            Py_ssize_t lengthb
+            Py_ssize_t y,xi,yi
+       
+        xi = s.x
+        yi = s.y
+       
+        lengthb = boardx.shape[0]
+        for y in range(xi-1,-1,-1): # hardcode thanks to cython n(orth 
+            if boardx[y,yi] == 0 or  boardx[y,yi] ==color:
+                head= add(head, y, yi)
+            else:
+                break
+             
+        for y in range(xi+1,lengthb): # hardcode thanks to cython south
+            if boardx[y,yi]==0 or boardx[y,yi]== color:  
+                head= add(head, y, yi)
+            else:
+                break
+        
+        for y in range(yi-1,-1,-1): # hardcode thanks to cython left
+            if boardx[xi,y]==0 or boardx[xi,y]==color :
+                head= add(head, xi, y)
+            else:
+                break
+             
+        for y in range(yi+1,lengthb): # hardcode thanks to cython  right
+            if boardx[xi,y]==0 or boardx[xi,y]==color:
+                head= add(head, xi, y)
+            else:
+                break
+        for y in range(1,lengthb): # hardcode thanks to cython  south left
+                    s.x-= 1
+                    s.y-= 1
+                    if s.x>=0 and s.y>=0 and (boardx[s.x,s.y]==0 or boardx[s.x,s.y]==color):
+                        head= add(head, s.x, s.y)
+                    else:
+                        break
+                    
+        s.x=xi
+        s.y=yi
+        for y in range(1,lengthb): # hardcode thanks to cython  south right
+                    s.x-= 1
+                    s.y+= 1
+                    if s.x>=0 and s.y<lengthb and (boardx[s.x,s.y]==0 or boardx[s.x,s.y]==color):
+                        head= add(head, s.x, s.y)
+                    else:
+                        break
+        s.x=xi
+        s.y=yi
+        for y in range(1,lengthb): # hardcode thanks to cython  north left
+                    s.x+= 1
+                    s.y-= 1
+                    if s.y>=0 and s.x<lengthb and (boardx[s.x,s.y]==0 or boardx[s.x,s.y]==color):
+                        head= add(head, s.x, s.y)
+                    else:
+                        break
+        s.x=xi
+        s.y=yi             
+        for y in range(1,lengthb): # hardcode thanks to cython  north right
+                    s.x+= 1
+                    s.y+= 1
+                    if s.x<lengthb and s.y<lengthb and (boardx[s.x,s.y]==0 or boardx[s.x,s.y]==color):
+                        head= add(head, s.x, s.y)
+                    else:
+                        break
+        s.x=xi
+        s.y=yi
+        return  head
+    @staticmethod
+    cdef np.npy_bool prunning(_LinkedListStruct*amazon, short color, short[:,::1] board)nogil:
+        cdef:
+            _LinkedListStruct*_ptr = NULL
+            _LinkedListStruct* _paths  = NULL
+            _LinkedListStruct* _walker = NULL
+            _LinkedListStruct* _set = NULL
+            _LinkedListStruct* _ptrinner = NULL
+            Py_ssize_t x,y
+        with gil:
+            print("####")
+        while amazon is not NULL:
+          
+            _ptr = amazon
+          
+            _paths = MonteCarloTreeSearchNodeOptimized.get_nopath(board, _ptr, color)
+         
+            _walker = _paths
+            while _walker is not NULL:
+           
+                if board[_walker.x, _walker.y] != 0:
+                    with gil:
+                        print("1")
+                    freelist(_set)
+                    freelist(amazon)
+                    freelist(_walker)
+                    with gil:
+                        print("1-1")
+                
+                    return True
+            
+                _ptrinner = _walker
+                if not inlist(_set, _ptrinner):
+                    x = _ptrinner.x
+                    y = _ptrinner.y 
+                    amazon = add(amazon, x, y)
+
+                _walker = _walker.next
+                free(_ptrinner)
+
+            amazon = amazon.next
+            free(_ptr)
+            _paths = NULL
+     
+        freelist(_set)
+       
+        return False
+    @staticmethod
+    cdef _LinkedListStruct* filteramazons(_LinkedListStruct*amazon, short color, short[:,::1] board)nogil:
+        cdef:
+            _LinkedListStruct*future=NULL
+            _LinkedListStruct*temp=NULL
+            _LinkedListStruct*betterfuture = NULL
+        future = amazon
+   
+        while future is not NULL:
+        
+            temp = add(temp, future.x, future.y)
+           # temp.next = NULL
+            if MonteCarloTreeSearchNodeOptimized.prunning(temp, color, board):
+                betterfuture = add(betterfuture, future.x, future.y)
+            future = future.next
+            temp = NULL
+        if betterfuture is not NULL:
+       
+            freelist(amazon)
+            return betterfuture
+        else:
+          
+            return amazon
+    @staticmethod 
+    cdef _LinkedListStruct* get_queen_posn(short[:, ::1] a,short color, unsigned short num) nogil:
+        cdef:
+            unsigned short ind = 0
+            Py_ssize_t x,y,leng
+            _LinkedListStruct* _head = NULL
+            _LinkedListStruct* _betterfuture = NULL
+        leng = a.shape[0]
+
+        for x in range(leng):
+            for y in range(leng):
+                if a[x, y]==color:
+                    _head = add(_head,x,y)
+                    ind+=1
+                    if ind==num:
+                        return _head
+    @staticmethod
+    cdef _MovesStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*amazons) nogil: # 100%  optimized
+        cdef:
+            _MovesStruct*head = NULL
+            _MovesStruct*lighthead = NULL
+            _MovesStruct*container = NULL
+            _MovesStruct*pointer = NULL
+            Py_ssize_t lengthb
+            Py_ssize_t y,xi,yi,xx,yy
+        
+        lengthb = boardx.shape[0]
+        while amazons is not NULL:
+          
+            xi = amazons.x
+            yi = amazons.y
+
+            xx = amazons.x
+            yy = amazons.y
+           
+        
+            for y in range(xi-1,-1,-1): # hardcode thanks to cython north 
+                if boardx[y,yi]==0:
+                    container= push(container, xx, yy,y, yi, xx, yy)
+                else:
+                    break
+                
+            for y in range(xi+1,lengthb): # hardcode thanks to cython south
+                if boardx[y,yi]==0:
+                    container= push(container, xx, yy, y, yi, xx, yy)
+                else:
+                    break
+            
+            for y in range(yi-1,-1,-1): # hardcode thanks to cython left
+                if boardx[xi,y]==0:
+                    container= push(container,xx, yy, xi, y, xx, yy)
+                else:
+                    break
+                
+            for y in range(yi+1,lengthb): # hardcode thanks to cython  right
+                if boardx[xi,y]==0:
+                    container= push(container, xx, yy, xi, y, xx, yy)
+                else:
+                    break
+
+            for y in range(1,lengthb): # hardcode thanks to cython  south left
+                        amazons.x-= 1
+                        amazons.y-= 1
+                        if amazons.x>=0 and amazons.y>=0 and boardx[amazons.x,amazons.y]==0:
+                            container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                        else:
+                            break
+                        
+            amazons.x=xi
+            amazons.y=yi
+            for y in range(1,lengthb): # hardcode thanks to cython  south right
+                        amazons.x-= 1
+                        amazons.y+= 1
+                        if amazons.x>=0 and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
+                            container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                        else:
+                            break
+            amazons.x=xi
+            amazons.y=yi
+            for y in range(1,lengthb): # hardcode thanks to cython  north left
+                        amazons.x+= 1
+                        amazons.y-= 1
+                        if amazons.y>=0 and amazons.x<lengthb and boardx[amazons.x,amazons.y]==0:
+                            container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                        else:
+                            break
+            amazons.x=xi
+            amazons.y=yi             
+            for y in range(1,lengthb): # hardcode thanks to cython  north right
+                        amazons.x+= 1
+                        amazons.y+= 1
+                        if amazons.x<lengthb and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
+                            container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                        else:
+                            break
+            _tmp = amazons
+            amazons = amazons.next
+            free(_tmp)
+            if container is not NULL:
+                if container.length <=2:
+                    pointer = container
+                    while pointer.next is not NULL:
+                        pointer = pointer.next
+                    pointer.next = lighthead
+                    lighthead = container
+                    container = NULL
+                
+                else:
+                    pointer = container
+                    while pointer.next is not NULL:
+                        pointer = pointer.next
+                    pointer.next = head
+                    head = container
+                    container = NULL
+
+  
+        if lighthead is NULL:
+         
+            return head
+        else:
+            pointer = head
+            while pointer is not NULL:
+                head = pointer
+                pointer = pointer.next
+                free(head)
+            return lighthead
+    @staticmethod
+    cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazons, _LinkedListStruct*eamazons) nogil: # 100%  optimized
+        cdef:
+            _MovesStruct*restrain = NULL
+            _MovesStruct*container = NULL
+            _MovesStruct*betterfuture = NULL
+            _MovesStruct*pointer = NULL
+            _MovesStruct*_ptr = NULL
+            Py_ssize_t lengthb
+            Py_ssize_t y,xi,yi,xx,yy
+     
+        lengthb = boardx.shape[0]
+        xx = 99
+        yy = 99
+        while amazons is not NULL:
+          
+            xi = amazons.x
+            yi = amazons.y
+          
+        
+            for y in range(xi-1,-1,-1): # hardcode thanks to cython north 
+                if boardx[y,yi]==0:
+                    container= push(container, xx, yy,y, yi, xx, yy)
+                else:
+                    break
+                
+            for y in range(xi+1,lengthb): # hardcode thanks to cython south
+                if boardx[y,yi]==0:
+                    container= push(container, xx, yy, y, yi, xx, yy)
+                else:
+                    break
+            
+            for y in range(yi-1,-1,-1): # hardcode thanks to cython left
+                if boardx[xi,y]==0:
+                    container= push(container,xx, yy, xi, y, xx, yy)
+                else:
+                    break
+                
+            for y in range(yi+1,lengthb): # hardcode thanks to cython  right
+                if boardx[xi,y]==0:
+                    container= push(container, xx, yy, xi, y, xx, yy)
+                else:
+                    break
+
+            for y in range(1,lengthb): # hardcode thanks to cython  south left
+                        amazons.x-= 1
+                        amazons.y-= 1
+                        if amazons.x>=0 and amazons.y>=0 and boardx[amazons.x,amazons.y]==0:
+                            container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                        else:
+                            break
+                        
+            amazons.x=xi
+            amazons.y=yi
+            for y in range(1,lengthb): # hardcode thanks to cython  south right
+                        amazons.x-= 1
+                        amazons.y+= 1
+                        if amazons.x>=0 and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
+                            container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                        else:
+                            break
+            amazons.x=xi
+            amazons.y=yi
+            for y in range(1,lengthb): # hardcode thanks to cython  north left
+                        amazons.x+= 1
+                        amazons.y-= 1
+                        if amazons.y>=0 and amazons.x<lengthb and boardx[amazons.x,amazons.y]==0:
+                            container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                        else:
+                            break
+            amazons.x=xi
+            amazons.y=yi             
+            for y in range(1,lengthb): # hardcode thanks to cython  north right
+                        amazons.x+= 1
+                        amazons.y+= 1
+                        if amazons.x<lengthb and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
+                            container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                        else:
+                            break
+            _tmp = amazons
+            amazons = amazons.next
+            free(_tmp)
+        restrain = MonteCarloTreeSearchNodeOptimized.get_amazon_moves(boardx, eamazons)
+        if restrain is not NULL and restrain.length <= 2:
+            while restrain is not NULL:
+                pointer = restrain
+                _ptr = container
+                while _ptr is not NULL:
+                    if _ptr.dx == pointer.dx and _ptr.dy == pointer.dy:
+                        betterfuture = push(betterfuture, xx,yy,_ptr.dx,_ptr.dy,xx,yy)
+                    _ptr = _ptr.next
+                restrain= restrain.next
+                free(pointer)
+        else:
+            while restrain is not NULL:
+                pointer = restrain
+                restrain= restrain.next
+                free(pointer)
+
+
+        if betterfuture is NULL:
+            return container
+        else:
+            while container is not NULL:
+                _ptr = container
+                container = container.next
+                free(_ptr)
+            return betterfuture
+    '''
+        @args:
+            calling MCTS node, board memview
+        @info:
+            function for MCTS
+        @return:
+            the next unexpanded child of the calling MCTS node
+    '''
+    @staticmethod
+    cdef _MCTS_Node * expand(_MCTS_Node * this, short[:,::1] board)nogil:
+        cdef _MovesStruct* action = this._untried_actions
+        cdef _MCTS_Node * child_node = NULL
+        cdef _LinkedListStruct*amazon = NULL
+        cdef _LinkedListStruct*eamazons = NULL
+        this._untried_actions = this._untried_actions.next
+      
+        if action.sx == 99:
+           
+            board[action.dx, action.dy] = -1
+            child_node = newnode(action, this.wturn,this.qnumber, parent=this)##ERRR
+            amazon = Board.get_queen_posn(board, child_node.token, this.qnumber)
+            amazon = MonteCarloTreeSearchNodeOptimized.filteramazons(amazon, child_node.backtoken, board)
+            child_node._untried_actions = MonteCarloTreeSearchNodeOptimized.get_amazon_moves(board, amazon)
+
+            if this.children is NULL:
+                this.children = child_node
+                this.children.num = 1
+            else:
+                child_node.next = this.children
+                this.children = child_node 
+                this.children.num = this.children.next.num + 1
+           
+            return child_node 
+        else:
+            
+            board[action.dx, action.dy] = this.token
+            board[action.sx, action.sy] = 0 
+            child_node = newnode(action, not this.wturn,this.qnumber, parent=this)##ERRR
+            amazon = add(amazon, action.dx, action.dy)
+            amazon.next = NULL
+            eamazons = Board.get_queen_posn(board, this.token, this.qnumber)
+            child_node._untried_actions = MonteCarloTreeSearchNodeOptimized.get_arrow_moves(board, amazon, eamazons)
+
+            if this.children is NULL:
+                this.children = child_node
+                this.children.num = 1
+            else:
+                child_node.next = this.children
+                this.children = child_node 
+                this.children.num = this.children.next.num + 1
+
+
+            return child_node 
+
+    '''
+        @args:
+            calling MCTS node, operations memview, board memview, copyboard memview, iteration+threadid for better seeding
+        @info:
+            function for MCTS
+        @return:
+            1 if the calling node wins the Rollout else -1
+    '''
+    @staticmethod
+    cdef short rollout(_MCTS_Node * this, short[:,::1] ops, short[:,::1] board, short[:,::1] copyb, int id, np.npy_bool wturn)nogil:
+        cdef:
+            _MovesStruct*possible_moves= NULL
+            _MovesStruct*ptr = NULL
+            _MovesStruct*action = NULL
+            _LinkedListStruct*amazon = NULL
+            int ts = time(NULL)
+            np.npy_bool current_wturn = this.wturn
+            short token = this.token
+            Py_ssize_t ind,jnd
+            Py_ssize_t length = board.shape[0]
+            _LinkedListStruct*eamazons = NULL
+
+
+        for ind in range(length):
+            for jnd in range(length):
+                copyb[ind,jnd] = board[ind,jnd]
+      
+        if this.move is not NULL and this.move.sx != 99:
+            
+            amazon = add(amazon, this.move.dx, this.move.dy)
+
+            eamazons = Board.get_queen_posn(board, this.token, this.qnumber)
+            possible_moves = MonteCarloTreeSearchNodeOptimized.get_arrow_moves(copyb, amazon, eamazons) 
+
+            srand(ts)
+            ind = ((rand()+id)%possible_moves.length)+1
+            while possible_moves is not NULL:
+                
+                if possible_moves.length == ind:
+                    action = possible_moves
+                    possible_moves = possible_moves.next
+                else:
+                    ptr = possible_moves
+                    possible_moves = possible_moves.next
+                    free(ptr)
+         
+            copyb[action.dx,action.dy] = -1
+            current_wturn = not current_wturn
+            token = 1 if current_wturn else 2
+            free(action)
+     
+        while not Board.iswon(copyb, token, this.qnumber, ops) :
+            amazon = Board.get_queen_posn(copyb, token, this.qnumber)
+            amazon = MonteCarloTreeSearchNodeOptimized.filteramazons(amazon, 2 if token==1 else 1, copyb)
+
+            possible_moves = MonteCarloTreeSearchNodeOptimized.get_amazon_moves(copyb, amazon)
+            srand(ts)
+            ind = ((rand()+id)%possible_moves.length)+1
+            while possible_moves is not NULL:
+                
+                if possible_moves.length == ind:
+                    action = possible_moves
+                    possible_moves = possible_moves.next
+                else:
+                    ptr = possible_moves
+                    possible_moves = possible_moves.next
+                    free(ptr)
+
+            copyb[action.dx,action.dy] = token
+            copyb[action.sx,action.sy] = 0
+            amazon = add(amazon, action.dx, action.dy)
+            amazon.next = NULL
+            free(action)
+
+            eamazons = Board.get_queen_posn(board, this.token, this.qnumber)
+            possible_moves = MonteCarloTreeSearchNodeOptimized.get_arrow_moves(copyb, amazon, eamazons)
+        
+            srand(ts)
+            ind = ((rand()+id)%possible_moves.length)+1
+            while possible_moves is not NULL:
+                
+                if possible_moves.length == ind:
+                    action = possible_moves
+                    possible_moves = possible_moves.next
+                else:
+                    ptr = possible_moves
+                    possible_moves = possible_moves.next
+                    free(ptr)
+        
+            copyb[action.dx,action.dy] = -1
+            current_wturn = not current_wturn
+            token = 1 if current_wturn else 2
+            free(action)
+         
+        return -1 if current_wturn == wturn else 1
+
+    '''
+        @args:
+            calling MCTS node, result of the rollout ,board memview
+        @info:
+            function for MCTS
+        @return:
+            nothing, but traverses back to the root, updating the nodes and reversing the moves (board) for space effiency
+    '''
+    @staticmethod
+    cdef void backpropagate(_MCTS_Node * this, short result, short[:,::1] board, np.npy_bool wturn)nogil:
+        
+        this._number_of_visits +=1.0
+        if this.wturn == wturn:
+            if result == 1:
+                this.loses+=1.0
+            else:
+                this.wins+=1.0
+        else:
+            if result == 1:
+                this.wins+=1.0
+            else:
+                this.loses+=1.0
+            
+        if this.parent is not NULL:
+            if this.move.sx == 99:
+                board[this.move.dx, this.move.dy] = 0
+            else:
+                board[this.move.dx, this.move.dy] = 0
+                board[this.move.sx, this.move.sy] = this.backtoken
+            MonteCarloTreeSearchNodeOptimized.backpropagate(this.parent, result, board, wturn)
+        return
+    
+    '''
+        @args:
+            parent wins, parent visits, child wins, child visits
+        @info:
+            function for MCTS
+        @return:
+            the UCB1 value for a child node : see paper []
+        @note:
+            could try a diffrent formula
+    '''
+    @staticmethod 
+    cdef DTYPE_t calculateUCB(DTYPE_t winsown, DTYPE_t countown, DTYPE_t winschild, DTYPE_t countchild ) nogil:
+        cdef:
+            DTYPE_t ratio_kid = winschild/countchild
+            DTYPE_t visits_log = log(countown)
+            DTYPE_t vrtl = 0.25
+            DTYPE_t wurzel = sqrt((visits_log/countchild) * min(vrtl,ratio_kid-(ratio_kid*ratio_kid), sqrt(2*visits_log/countchild)) )
+        return (ratio_kid + wurzel)
+
+    '''
+        @args:
+            calling MCTS node as parent, param ( not important for this UCB1 score but can be used for future versions including an exploration bonus)
+        @info:
+            function for MCTS
+        @return:
+            the best child node
+    '''
+    @staticmethod
+    cdef _MCTS_Node * best_child(_MCTS_Node * this, DTYPE_t c_param)nogil:
+        cdef:
+            _MCTS_Node * best = this.children
+            DTYPE_t best_score = -1000.0
+            DTYPE_t score
+            DTYPE_t wins = this.wins
+            DTYPE_t _number_of_visits = this._number_of_visits
+            DTYPE_t cw,cn
+            _MCTS_Node * c = this.children
+       
+
+        while c is not NULL:
+           
+            cw = c.wins
+            cn = c._number_of_visits
+            score = MonteCarloTreeSearchNodeOptimized.calculateUCB(wins, _number_of_visits, cw, cn)
+            
+            if score > best_score:
+                    best_score = score
+                    best = c
+
+            c = c.next
+
+        return best
+    
+    '''
+        @args:
+            calling MCTS node, param ( not important also see best_child()), operations memview, board memview
+        @info:
+            function for MCTS
+        @return:
+            the next node for the rollout 
+    '''
+    @staticmethod
+    cdef _MCTS_Node * tree_policy(_MCTS_Node * this, DTYPE_t c_param, short[:,::1] ops, short[:,::1] board)nogil:
+        cdef:
+            _MCTS_Node * current_node = this
+
+        while True:
+        
+            if current_node._untried_actions is not NULL:
+
+                return MonteCarloTreeSearchNodeOptimized.expand(current_node, board)
+            else:
+              
+                current_node = MonteCarloTreeSearchNodeOptimized.best_child(current_node, c_param)
+                
+                if current_node.move.sx == 99:
+                    board[current_node.move.dx, current_node.move.dy] = -1
+                else:
+                    board[current_node.move.dx, current_node.move.dy] = current_node.backtoken
+                    board[current_node.move.sx, current_node.move.sy] = 0 
+       
+            if  current_node.move.sx == 99 and Board.iswon(board, current_node.token, current_node.qnumber, ops):
+                return current_node
+
+
+
+    '''
+        @args:
+            calling MCTS node, how many games per turn, param ( not important also see best_child()), operations memview, board memview, boardcopy memview
+        @info:
+            function for MCTS - ENTRANCE
+        @return:
+            nothing but performs the best move according to the MCTS on the original board
+    '''
+    @staticmethod
+    cdef void best_action(_MCTS_Node  * this, unsigned long  simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb, int id)nogil:        
+        cdef:
+            short reward
+            unsigned long i
+            _MCTS_Node *v = NULL
+            _MovesStruct* best = NULL
+
+        if Board.iswon(board, this.backtoken, this.qnumber, ops):
+            board[this._untried_actions.dx, this._untried_actions.dy] = this.token
+            board[this._untried_actions.sx, this._untried_actions.sy] = -1
+            return
+        for i in range(simulation_no):
+        
+            v = MonteCarloTreeSearchNodeOptimized.tree_policy(this, c_param, ops, board)
+          
+            reward = MonteCarloTreeSearchNodeOptimized.rollout(v, ops, board, copyb, id, this.wturn)
+         
+            MonteCarloTreeSearchNodeOptimized.backpropagate(v, reward, board, this.wturn)
+            
+        #MonteCarloTreeSearchNodeOptimized.debugt(this, 0)
+    
+        v = MonteCarloTreeSearchNodeOptimized.best_child(this, c_param)
+        best =  v.move
+        board[best.dx, best.dy] = this.token
+        board[best.sx, best.sy] = 0 
+     
+        v = MonteCarloTreeSearchNodeOptimized.best_child(v, c_param)
+        best =  v.move
+        board[best.dx, best.dy] = -1
+      
+        MonteCarloTreeSearchNodeOptimized.freetree(this)
+        return
+    
+    '''
+        @args:
+            calling MCTS node
+        @info:
+            function for MCTS - utility
+        @return:
+            nothing but frees the Tree structure 
+        @note:
+            so far no leaks found via valgrind but they are still possible !
+    '''
+    @staticmethod
+    cdef void freetree(_MCTS_Node *root)nogil:
+        cdef _MCTS_Node *children = root.children
+        cdef _MCTS_Node *child = NULL
+        cdef _MovesStruct*move = NULL
+        cdef _MovesStruct*tmp = NULL
+        while children is not NULL:
+            child = children
+            children = children.next
+            MonteCarloTreeSearchNodeOptimized.freetree(child)
+            
+        move = root._untried_actions
+        while move is not NULL:
+            tmp = move
+            move = move.next
+            free(tmp)
+        if root.move is not NULL:
+            free(root.move)
+        free(root)
+
+    @staticmethod
+    cdef void debugt(_MCTS_Node *root, short depth)nogil:
+        cdef _MCTS_Node *children = root.children
+        cdef _MCTS_Node *child = NULL
+        with gil:
+            if children is NULL:
+                print(depth, 0)
+            else:
+                print(depth, children.num)
+        while children is not NULL:
+            
+            child = children
+            children = children.next
+            MonteCarloTreeSearchNodeOptimized.debugt(child, depth+1)
+            
+  
 '''
         @args:
             fen format move string
@@ -1483,6 +2212,26 @@ cpdef alphabet2num(pos_raw):
         @return:
             nothing but performs the simulations and stores the results in the queue
 '''
+cdef void* freelist(_LinkedListStruct*_head)nogil:
+        cdef _LinkedListStruct*_ptr = NULL
+        with gil:
+            print("--")
+        while _head is not NULL:
+            with gil:
+                print(_head.x, _head.y)
+            _ptr = _head.next
+            free(_head)
+            _head = _ptr
+
+cdef np.npy_bool inlist(_LinkedListStruct*_head, _LinkedListStruct* _elem)nogil:
+        cdef _LinkedListStruct*_ptr = NULL
+        _ptr = _head
+  
+        while _ptr is not NULL:
+            if _ptr.x == _elem.x and _ptr.y == _elem.y:
+                return True
+            _ptr = _ptr.next
+        return False
 def main(i,q, times,inputfile,A,B,MCTS):
     cdef int j = i
     cdef Amazons field
