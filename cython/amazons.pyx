@@ -1,6 +1,6 @@
 #!python
 #cython: language_level=3
-#cython: boundscheck=True
+#cython: boundscheck=False
 #cython: wraparound=False
 #cython: cdivision=True
 #cython: nonecheck=False
@@ -138,8 +138,9 @@ cdef class Amazons:
         public list player
         unsigned long MCTS
         int id
+        time_t ressources
 
-    def __init__(self, config="config.txt", A=1,B=1,MCTS=10000, j=1):
+    def __init__(self, config="config.txt", A=1,B=1,MCTS=10000, j=1, ressources=20):
         info = open(config, "r")
         self.n = int(info.readline())
         white = info.readline().split(":")
@@ -152,6 +153,7 @@ cdef class Amazons:
         self.board = Board(self.n, self.white_init, self.black_init)
         self.MCTS = MCTS
         self.id = j
+        self.ressources = ressources
 
     def game(self):
         cdef:
@@ -175,19 +177,19 @@ cdef class Amazons:
                 if not x:
                     player.player(self.board) 
                 elif x==1 or x==2 or x==4:
-                    AI.get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, param)
+                    AI.get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, param, self.ressources)
                     self.board.wturn = not self.board.wturn
                 else:
                     if x==3:
                         root = newnode(NULL,self.board.wturn, self.board.qnumber, parent=NULL)
                         root._untried_actions = Board.fast_moves(self.board.board_view, root.token, root.qnumber)
-                        MonteCarloTreeSearchNode.best_action(root,self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id)
+                        MonteCarloTreeSearchNode.best_action(root,self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id, self.ressources)
                     else:
                         rooto = newnode(NULL,self.board.wturn, self.board.qnumber, parent=NULL)
                         amazon = Board.get_queen_posn(self.board.board_view, 1 if self.board.wturn else 2, self.board.qnumber)
-                        amazon = MonteCarloTreeSearchNodeOptimized.filteramazons(amazon, rooto.backtoken, self.board.board_view)
+                        amazon = MonteCarloTreeSearchNodeOptimized.filteramazons(amazon, rooto.backtoken, self.board.board_view, ops)
                         rooto._untried_actions = MonteCarloTreeSearchNodeOptimized.get_amazon_moves(self.board.board_view, amazon)
-                        MonteCarloTreeSearchNodeOptimized.best_action(rooto,2*self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id)
+                        MonteCarloTreeSearchNodeOptimized.best_action(rooto,2*self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id, self.ressources)
                     self.board.wturn = not self.board.wturn
                 param-=1 
                 
@@ -457,13 +459,12 @@ cdef class Board:
     cdef np.npy_bool iswon(short[:, ::1] board ,short token, unsigned short qn, short [:,::1] ops)nogil:
 
         cdef:           
-            Py_ssize_t x,leng,i,opsl
+            Py_ssize_t x,leng,opsl
             _LinkedListStruct*_queenshead =  Board.get_queen_posn(board, token, qn)
             _LinkedListStruct*_ptr
 
        
         opsl = 8
-        i=0
         leng = board.shape[0]
         while _queenshead is not NULL:
             for x in range(opsl):
@@ -479,7 +480,7 @@ cdef class Board:
                         return False
                 _queenshead.x-=ops[x,0]
                 _queenshead.y-=ops[x,1]
-            i+=1
+
             _ptr = _queenshead
             _queenshead = _queenshead.next
             free(_ptr)
@@ -1064,11 +1065,12 @@ cdef class AI:
             nothing but chooses the best move for wturn as the maximizing player and performs it
     '''
     @staticmethod
-    cdef void get_ai_move(short[:, ::1] board, int mode, np.npy_bool wturn, unsigned short qnumber, short[:,::1] ops,short[:,:,::1] hb, unsigned int param) nogil:  
+    cdef void get_ai_move(short[:, ::1] board, int mode, np.npy_bool wturn, unsigned short qnumber, short[:,::1] ops,short[:,:,::1] hb, unsigned int param, time_t ressources) nogil:  
         cdef:
             DTYPE_t best_score = -1000000.0
             DTYPE_t rbest_score = 1000000.0
             DTYPE_t score = 0.0
+            time_t timestamp
 
             unsigned short token = 1 if wturn else 2
 
@@ -1078,7 +1080,7 @@ cdef class AI:
             unsigned short depth = 2 if _head.length > 50 else 8
 
         while _head is not NULL:
-            
+            timestamp = time(NULL)
             # move
             board[_head.dx,_head.dy] = token
             board[_head.sx,_head.sy] = 0
@@ -1099,6 +1101,17 @@ cdef class AI:
 
             _head = _head.next
             free(_ptr)
+
+            timestamp= (time(NULL) - timestamp)
+         
+            ressources-= timestamp
+            
+            if ressources <= 0:
+                while _head is not NULL:
+                    _ptr = _head
+                    _head = _head.next
+                    free(_ptr)
+                break    
             
         board[best_move.dx, best_move.dy] = token
         board[best_move.sx, best_move.sy] = 0
@@ -1246,7 +1259,7 @@ cdef class MonteCarloTreeSearchNode():
             _MovesStruct*possible_moves= NULL
             _MovesStruct*ptr = NULL
             _MovesStruct*action = NULL
-            int ts = time(NULL)
+            time_t ts = time(NULL)
             np.npy_bool current_wturn = this.wturn
             short token = this.token
             Py_ssize_t ind,jnd
@@ -1398,20 +1411,27 @@ cdef class MonteCarloTreeSearchNode():
             nothing but performs the best move according to the MCTS on the original board
     '''
     @staticmethod
-    cdef void best_action(_MCTS_Node * this, unsigned long  simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb, int id)nogil:        
+    cdef void best_action(_MCTS_Node * this, unsigned long  simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb, int id, time_t ressources)nogil:        
         cdef:
             short reward
             unsigned long i
             _MCTS_Node*v = NULL
+            time_t timestamp
          
             _MovesStruct* best = NULL
         for i in range(simulation_no):
-          
+            timestamp = time(NULL)
+
             v = MonteCarloTreeSearchNode.tree_policy(this,c_param, ops, board)
             
             reward = MonteCarloTreeSearchNode.rollout(v, ops, board, copyb, id,this.wturn)
          
-            MonteCarloTreeSearchNode.backpropagate(v, reward, board, this.wturn)   
+            MonteCarloTreeSearchNode.backpropagate(v, reward, board, this.wturn) 
+
+            MonteCarloTreeSearchNodeOptimized.backpropagate(v, reward, board, this.wturn)
+            ressources -= (time(NULL) - timestamp)
+            if ressources <= 0:
+                break  
     
         v = MonteCarloTreeSearchNode.best_child(this, c_param)
        
@@ -1452,6 +1472,7 @@ cdef class MonteCarloTreeSearchNode():
             free(root.move)
         free(root)
   
+
 
 cdef class MonteCarloTreeSearchNodeOptimized():
     '''
@@ -1535,74 +1556,92 @@ cdef class MonteCarloTreeSearchNodeOptimized():
         s.y=yi
         return  head
     @staticmethod
-    cdef np.npy_bool prunning(_LinkedListStruct*amazon, short color, short[:,::1] board)nogil:
+    cdef np.npy_bool prunning(_LinkedListStruct*amazon, short color, short[:,::1] board, short[:,::1] ops)nogil:
         cdef:
             _LinkedListStruct*_ptr = NULL
             _LinkedListStruct* _paths  = NULL
             _LinkedListStruct* _walker = NULL
             _LinkedListStruct* _set = NULL
             _LinkedListStruct* _ptrinner = NULL
-            Py_ssize_t x,y
-        with gil:
-            print("####")
+            Py_ssize_t x,y,leng,opsl
+            np.npy_bool flag = False
+
+       
+        opsl = 8
+        leng = board.shape[0]
+       
+        for x in range(opsl):
+            amazon.x+=ops[x,0]
+            amazon.y+=ops[x,1]
+
+            if 0 <= amazon.x < leng and 0 <= amazon.y < leng:
+                if board[amazon.x, amazon.y] == 0:
+                        flag = True
+                        break
+            amazon.x-=ops[x,0]
+            amazon.y-=ops[x,1]
+        
+        if not flag:
+            free(amazon)
+            return False
+
         while amazon is not NULL:
-          
-            _ptr = amazon
-          
-            _paths = MonteCarloTreeSearchNodeOptimized.get_nopath(board, _ptr, color)
-         
-            _walker = _paths
-            while _walker is not NULL:
+
+            _paths = MonteCarloTreeSearchNodeOptimized.get_nopath(board, amazon, color)
+            while _paths is not NULL:
            
-                if board[_walker.x, _walker.y] != 0:
-                    with gil:
-                        print("1")
+                if board[_paths.x, _paths.y] != 0:
+               
                     freelist(_set)
                     freelist(amazon)
-                    freelist(_walker)
-                    with gil:
-                        print("1-1")
-                
+                    freelist(_paths)
+                    
                     return True
             
-                _ptrinner = _walker
-                if not inlist(_set, _ptrinner):
-                    x = _ptrinner.x
-                    y = _ptrinner.y 
+                if not inlist(_set, _paths):
+                    x = _paths.x
+                    y = _paths.y 
                     amazon = add(amazon, x, y)
+                    _set = add(_set, x, y)
 
-                _walker = _walker.next
-                free(_ptrinner)
+                _walker = _paths
+                _paths = _paths.next
+                free(_walker)
 
+            _ptr = amazon
             amazon = amazon.next
             free(_ptr)
-            _paths = NULL
-     
+        
         freelist(_set)
-       
+
         return False
     @staticmethod
-    cdef _LinkedListStruct* filteramazons(_LinkedListStruct*amazon, short color, short[:,::1] board)nogil:
+    cdef _LinkedListStruct* filteramazons(_LinkedListStruct*amazon, short color, short[:,::1] board, short[:,::1] ops)nogil:
         cdef:
             _LinkedListStruct*future=NULL
             _LinkedListStruct*temp=NULL
             _LinkedListStruct*betterfuture = NULL
+            Py_ssize_t x,y
         future = amazon
-   
+      
         while future is not NULL:
-        
-            temp = add(temp, future.x, future.y)
-           # temp.next = NULL
-            if MonteCarloTreeSearchNodeOptimized.prunning(temp, color, board):
-                betterfuture = add(betterfuture, future.x, future.y)
-            future = future.next
+            x = future.x
+            y = future.y
             temp = NULL
+            temp = add(temp, x, y)
+
+            if MonteCarloTreeSearchNodeOptimized.prunning(temp, color, board, ops):
+                betterfuture = add(betterfuture, x, y)
+
+            future = future.next
+           
         if betterfuture is not NULL:
-       
+            
             freelist(amazon)
+         
             return betterfuture
         else:
-          
+       
             return amazon
     @staticmethod 
     cdef _LinkedListStruct* get_queen_posn(short[:, ::1] a,short color, unsigned short num) nogil:
@@ -1847,7 +1886,7 @@ cdef class MonteCarloTreeSearchNodeOptimized():
             the next unexpanded child of the calling MCTS node
     '''
     @staticmethod
-    cdef _MCTS_Node * expand(_MCTS_Node * this, short[:,::1] board)nogil:
+    cdef _MCTS_Node * expand(_MCTS_Node * this, short[:,::1] board, short[:,::1] ops)nogil:
         cdef _MovesStruct* action = this._untried_actions
         cdef _MCTS_Node * child_node = NULL
         cdef _LinkedListStruct*amazon = NULL
@@ -1859,9 +1898,11 @@ cdef class MonteCarloTreeSearchNodeOptimized():
             board[action.dx, action.dy] = -1
             child_node = newnode(action, this.wturn,this.qnumber, parent=this)##ERRR
             amazon = Board.get_queen_posn(board, child_node.token, this.qnumber)
-            amazon = MonteCarloTreeSearchNodeOptimized.filteramazons(amazon, child_node.backtoken, board)
+          
+            amazon = MonteCarloTreeSearchNodeOptimized.filteramazons(amazon, child_node.backtoken, board, ops)
+          
             child_node._untried_actions = MonteCarloTreeSearchNodeOptimized.get_amazon_moves(board, amazon)
-
+         
             if this.children is NULL:
                 this.children = child_node
                 this.children.num = 1
@@ -1907,7 +1948,7 @@ cdef class MonteCarloTreeSearchNodeOptimized():
             _MovesStruct*ptr = NULL
             _MovesStruct*action = NULL
             _LinkedListStruct*amazon = NULL
-            int ts = time(NULL)
+            time_t ts = time(NULL)
             np.npy_bool current_wturn = this.wturn
             short token = this.token
             Py_ssize_t ind,jnd
@@ -1925,7 +1966,7 @@ cdef class MonteCarloTreeSearchNodeOptimized():
 
             eamazons = Board.get_queen_posn(board, this.token, this.qnumber)
             possible_moves = MonteCarloTreeSearchNodeOptimized.get_arrow_moves(copyb, amazon, eamazons) 
-
+        
             srand(ts)
             ind = ((rand()+id)%possible_moves.length)+1
             while possible_moves is not NULL:
@@ -1945,9 +1986,11 @@ cdef class MonteCarloTreeSearchNodeOptimized():
      
         while not Board.iswon(copyb, token, this.qnumber, ops) :
             amazon = Board.get_queen_posn(copyb, token, this.qnumber)
-            amazon = MonteCarloTreeSearchNodeOptimized.filteramazons(amazon, 2 if token==1 else 1, copyb)
-
+       
+            amazon = MonteCarloTreeSearchNodeOptimized.filteramazons(amazon, 2 if token==1 else 1, copyb, ops)
+       
             possible_moves = MonteCarloTreeSearchNodeOptimized.get_amazon_moves(copyb, amazon)
+           
             srand(ts)
             ind = ((rand()+id)%possible_moves.length)+1
             while possible_moves is not NULL:
@@ -2090,7 +2133,7 @@ cdef class MonteCarloTreeSearchNodeOptimized():
         
             if current_node._untried_actions is not NULL:
 
-                return MonteCarloTreeSearchNodeOptimized.expand(current_node, board)
+                return MonteCarloTreeSearchNodeOptimized.expand(current_node, board, ops)
             else:
               
                 current_node = MonteCarloTreeSearchNodeOptimized.best_child(current_node, c_param)
@@ -2115,25 +2158,31 @@ cdef class MonteCarloTreeSearchNodeOptimized():
             nothing but performs the best move according to the MCTS on the original board
     '''
     @staticmethod
-    cdef void best_action(_MCTS_Node  * this, unsigned long  simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb, int id)nogil:        
+    cdef void best_action(_MCTS_Node  * this, unsigned long  simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb, int id, time_t ressources)nogil:        
         cdef:
             short reward
             unsigned long i
             _MCTS_Node *v = NULL
             _MovesStruct* best = NULL
+            time_t timestamp
 
         if Board.iswon(board, this.backtoken, this.qnumber, ops):
             board[this._untried_actions.dx, this._untried_actions.dy] = this.token
             board[this._untried_actions.sx, this._untried_actions.sy] = -1
             return
-        for i in range(simulation_no):
         
+        for i in range(simulation_no):
+            timestamp = time(NULL)
             v = MonteCarloTreeSearchNodeOptimized.tree_policy(this, c_param, ops, board)
           
             reward = MonteCarloTreeSearchNodeOptimized.rollout(v, ops, board, copyb, id, this.wturn)
          
             MonteCarloTreeSearchNodeOptimized.backpropagate(v, reward, board, this.wturn)
-            
+            ressources -= (time(NULL) - timestamp)
+            if ressources <= 0:
+                break
+
+
         #MonteCarloTreeSearchNodeOptimized.debugt(this, 0)
     
         v = MonteCarloTreeSearchNodeOptimized.best_child(this, c_param)
@@ -2214,11 +2263,8 @@ cpdef alphabet2num(pos_raw):
 '''
 cdef void* freelist(_LinkedListStruct*_head)nogil:
         cdef _LinkedListStruct*_ptr = NULL
-        with gil:
-            print("--")
+ 
         while _head is not NULL:
-            with gil:
-                print(_head.x, _head.y)
             _ptr = _head.next
             free(_head)
             _head = _ptr
@@ -2232,20 +2278,31 @@ cdef np.npy_bool inlist(_LinkedListStruct*_head, _LinkedListStruct* _elem)nogil:
                 return True
             _ptr = _ptr.next
         return False
-def main(i,q, times,inputfile,A,B,MCTS):
+
+cdef void* readlist(_LinkedListStruct*_head)nogil:
+        cdef _LinkedListStruct*_ptr = NULL
+        _ptr = _head
+        with gil:
+            print("--------------")
+        while _ptr is not NULL:
+            with gil:
+                print(_ptr.x, _ptr.y)
+            _ptr = _ptr.next
+     
+def main(i,q, times,inputfile,A,B,MCTS, res):
     cdef int j = i
     cdef Amazons field
     cdef int f = 0
     cdef int k 
     for k in range(times):    
-        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j+k)
+        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j+k, res)
         f += int(field.game())
     q.put(f)
 
-def simulate(times=3,inputfile="3x3",A=1,B=2,MCTS=10000):
+def simulate(times=3,inputfile="3x3",A=1,B=2,MCTS=10000, res=20):
     import time
     cdef Amazons field
     stamp = time.time()
     for _ in range(times):    
-        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,0)
+        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,0, res)
         print( field.game(), time.time()-stamp)
