@@ -1,6 +1,0 @@
-*.pyx linguist-vendored=false
-*.pyx linguist-language=cythonC
-*.ipynb linguist-vendored=true
-
-
-
