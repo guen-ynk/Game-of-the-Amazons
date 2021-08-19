@@ -15,12 +15,12 @@ def main(times=5,inputfile= "4x4",A=4,B=5,MCTS=1000,cores=2):
     #B = int(input("B mode"))
     #MCTS = int(input("MCTS sim"))
     #cores = int(input("cores#"))
-    #times=  2
-    #cores = 25
-    #inputfile = "8x8"
-    #Alist = [4,3,4,3,4,3,4,3,4,3,4,3]
-    #Blist = [3,4,3,4,3,4,3,4,3,4,3,4]
-    #MCTSl = [1000,1000,5000,5000,10000,10000,50000,50000,70000,70000,100000,100000]
+    times=  2
+    cores = 25
+    inputfile = "10x10"
+    Alist = [3,5,1,3,1,5,4,3,4,5]
+    Blist = [5,3,3,1,5,1,3,4,5,4]
+    MCTSl = [1000,1000,1000,1000,1000,1000,1000,1000,1000,1000]
     Alist = [A]
     Blist = [B]
     MCTSl =[MCTS]
@@ -29,7 +29,7 @@ def main(times=5,inputfile= "4x4",A=4,B=5,MCTS=1000,cores=2):
         q = multiprocessing.Queue()
         stamp = time.time()
         for i in range(cores):
-            p = multiprocessing.Process(target=amazons.main,args=(i,q,times,inputfile,Alist[x],Blist[x],MCTSl[x], 30)) 
+            p = multiprocessing.Process(target=amazons.main,args=(i,q,times,inputfile,Alist[x],Blist[x],MCTSl[x], 240)) 
             p.start()
             processes.append(p)
         for p in processes:
