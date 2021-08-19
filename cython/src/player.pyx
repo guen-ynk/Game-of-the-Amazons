@@ -1,4 +1,5 @@
 #!python
+#cython: binding=True
 #cython: language_level=3
 cimport board as field
 import board as field

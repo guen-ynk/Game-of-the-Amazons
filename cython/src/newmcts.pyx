@@ -1,8 +1,9 @@
 #!python
+#cython: binding=True
 #cython: language_level=3
 #cython: boundscheck=False
 #cython: wraparound=False
-#cython: cdivision=True
+#cython: cdivision=False
 #cython: nonecheck=False
 #cython: initializedcheck=False
 
@@ -32,30 +33,30 @@ cdef _LinkedListStruct* get_nopath(short[:, ::1] boardx, _LinkedListStruct*s, sh
     yi = s.y
     
     lengthb = boardx.shape[0]
-    for y in range(xi-1,-1,-1): # hardcode thanks to cython n(orth 
+    for y in range(xi-1,-1,-1):  
         if boardx[y,yi] == 0 or  boardx[y,yi] ==color:
             head= add(head, y, yi)
         else:
             break
             
-    for y in range(xi+1,lengthb): # hardcode thanks to cython south
+    for y in range(xi+1,lengthb): 
         if boardx[y,yi]==0 or boardx[y,yi]== color:  
             head= add(head, y, yi)
         else:
             break
     
-    for y in range(yi-1,-1,-1): # hardcode thanks to cython left
+    for y in range(yi-1,-1,-1):  
         if boardx[xi,y]==0 or boardx[xi,y]==color :
             head= add(head, xi, y)
         else:
             break
             
-    for y in range(yi+1,lengthb): # hardcode thanks to cython  right
+    for y in range(yi+1,lengthb):  
         if boardx[xi,y]==0 or boardx[xi,y]==color:
             head= add(head, xi, y)
         else:
             break
-    for y in range(1,lengthb): # hardcode thanks to cython  south left
+    for y in range(1,lengthb):  
                 s.x-= 1
                 s.y-= 1
                 if s.x>=0 and s.y>=0 and (boardx[s.x,s.y]==0 or boardx[s.x,s.y]==color):
@@ -65,7 +66,7 @@ cdef _LinkedListStruct* get_nopath(short[:, ::1] boardx, _LinkedListStruct*s, sh
                 
     s.x=xi
     s.y=yi
-    for y in range(1,lengthb): # hardcode thanks to cython  south right
+    for y in range(1,lengthb):  
                 s.x-= 1
                 s.y+= 1
                 if s.x>=0 and s.y<lengthb and (boardx[s.x,s.y]==0 or boardx[s.x,s.y]==color):
@@ -74,7 +75,7 @@ cdef _LinkedListStruct* get_nopath(short[:, ::1] boardx, _LinkedListStruct*s, sh
                     break
     s.x=xi
     s.y=yi
-    for y in range(1,lengthb): # hardcode thanks to cython  north left
+    for y in range(1,lengthb):  
                 s.x+= 1
                 s.y-= 1
                 if s.y>=0 and s.x<lengthb and (boardx[s.x,s.y]==0 or boardx[s.x,s.y]==color):
@@ -83,7 +84,7 @@ cdef _LinkedListStruct* get_nopath(short[:, ::1] boardx, _LinkedListStruct*s, sh
                     break
     s.x=xi
     s.y=yi             
-    for y in range(1,lengthb): # hardcode thanks to cython  north right
+    for y in range(1,lengthb):  
                 s.x+= 1
                 s.y+= 1
                 if s.x<lengthb and s.y<lengthb and (boardx[s.x,s.y]==0 or boardx[s.x,s.y]==color):

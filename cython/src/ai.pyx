@@ -1,10 +1,13 @@
 #!python
+#cython: binding=True
 #cython: language_level=3
 #cython: boundscheck=False
 #cython: wraparound=False
-#cython: cdivision=True
+#cython: cdivision=False
 #cython: nonecheck=False
 #cython: initializedcheck=False
+# @author: Guen Yanik, 2021
+
 
 cimport cython
 from libc.stdlib cimport free 
@@ -14,46 +17,17 @@ from structures cimport _MovesStruct
 from numpy cimport npy_bool
 from board cimport Board
 from heuristics cimport move_count, territorial_eval_heurisic, territorial_eval_heurisick
-'''
-    @class:
-        AI ( Alpha Beta prunning)
-    @info:
-        provides functions for choosing the next move, utilizing alphabeta and heuristics
-        whole class 100% C - no GIL
-'''
- 
-'''
-    @args:
-        board memview, mode 1 or 2 -> see choosing heuristic, its white turn y/n?, # of amazons per side, operations, (TEH) heuristic board white and black
-    @info:
-        entrance function for alphabeta prunning
-
-        currently using the following optimizations:
-            -   depth = 8 not 2 for the endgame ( #possible moves < 50)
-            -   cutoffs
-            - *not anymore randomized playorder 
-            -   100% C for speed
-            -   move and undo move -> using only the original board not wasting space
-        open ideas:
-            -   move ordering
-            -   multithreading for calling instance of AB -> buying time for space
-
-    @return:
-        nothing but chooses the best move for wturn as the maximizing player and performs it
-'''
 
 cdef void get_ai_move(short[:, ::1] board, int mode, npy_bool wturn, unsigned short qnumber, short[:,::1] ops,short[:,:,::1] hb, unsigned int param, time_t ressources) nogil:  
     cdef:
         DTYPE_t best_score = -1000000.0
-        DTYPE_t rbest_score = 1000000.0
         DTYPE_t score = 0.0
         time_t timestamp
-
         unsigned short token = 1 if wturn else 2
 
         _MovesStruct*_ptr = NULL
+        _MovesStruct*_best_move = NULL
         _MovesStruct*_head = Board.fast_moves(board, token, qnumber)
-        _MovesStruct*best_move = NULL
         unsigned short depth = 2 if _head.length > 50 else 8
 
     while _head is not NULL:
@@ -63,7 +37,7 @@ cdef void get_ai_move(short[:, ::1] board, int mode, npy_bool wturn, unsigned sh
         board[_head.sx,_head.sy] = 0
         board[_head.ax,_head.ay] = -1
 
-        score = alphabeta(board,not wturn, qnumber, 2, best_score, rbest_score, False, mode, ops, hb, wturn, param-1)
+        score = alphabeta(board,not wturn, qnumber, depth, best_score, 1000000.0, False, mode, ops, hb, wturn, param-1)#depth
         # undo 
         board[_head.ax,_head.ay] = 0
         board[_head.dx,_head.dy] = 0
@@ -71,8 +45,8 @@ cdef void get_ai_move(short[:, ::1] board, int mode, npy_bool wturn, unsigned sh
         
         if score > best_score:
             best_score = score
-            _ptr = best_move
-            best_move = _head
+            _ptr = _best_move
+            _best_move = _head
         else:
             _ptr = _head
 
@@ -90,45 +64,50 @@ cdef void get_ai_move(short[:, ::1] board, int mode, npy_bool wturn, unsigned sh
                 free(_ptr)
             break    
         
-    board[best_move.dx, best_move.dy] = token
-    board[best_move.sx, best_move.sy] = 0
-    board[best_move.ax, best_move.ay] = -1
-    free(best_move)
+    board[_best_move.dx, _best_move.dy] = token
+    board[_best_move.sx, _best_move.sy] = 0
+    board[_best_move.ax, _best_move.ay] = -1
+    free(_best_move)
     return 
 
-'''
-    @args:
-        board memview,  its white turn y/n?, # of amazons per side, depth of AB, alpha, beta, maximizing?, mode 1 or 2 -> see choosing heuristic,operations, (TEH) heuristic board white and black, origin color 
-    @info:
-        function for alphabeta prunning
-    @return:
-        the alphabeta values for the calling AB instance
-'''
+
 cdef DTYPE_t alphabeta(short[:, ::1] board,npy_bool wturn, unsigned short qn, unsigned short depth, DTYPE_t a, DTYPE_t b, npy_bool maximizing, int mode, short[:,::1] ops,short[:,:,::1] hb, npy_bool callerwturn, unsigned int param)nogil:
     cdef:
-        DTYPE_t heuval1,heuval2
+        DTYPE_t val,heuval1,heuval2
         short token = 1 if wturn else 2
+        short nottoken = 2 if wturn else 1
+    val = 0.0
 
     if depth == 0 or Board.iswon(board,token, qn, ops):
+        if Board.iswon(board,nottoken, qn, ops):
+            if callerwturn == wturn:
+                val = -1.0
+            else:
+                val = 1.0
+        else:
+            if callerwturn == wturn:
+                val = 1.0
+            else:
+                val = -1.0
         if mode == 1:
             heuval1 = move_count(board, 1, qn)
             heuval2 = move_count(board, 2, qn)
             
             if callerwturn:
-                return heuval1-heuval2
+                return heuval1-heuval2+val
             else:
-                return heuval2-heuval1
+                return heuval2-heuval1+val
 
         elif mode == 2:
             if callerwturn:
-                return territorial_eval_heurisic(board, 1, qn,hb)
+                return territorial_eval_heurisic(board, 1, qn,hb)+val
             else:
-                return territorial_eval_heurisic(board, 2, qn,hb)
+                return territorial_eval_heurisic(board, 2, qn,hb)+val
         else:
             if callerwturn:
-                return territorial_eval_heurisick(board, 1, qn,hb, param)
+                return territorial_eval_heurisick(board, 1, qn,hb, param)+val
             else:
-                return territorial_eval_heurisick(board, 2, qn,hb, param)
+                return territorial_eval_heurisick(board, 2, qn,hb, param)+val
     cdef:
         DTYPE_t score = 0.0
         _MovesStruct*_ptr = NULL

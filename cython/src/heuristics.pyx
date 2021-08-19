@@ -1,8 +1,9 @@
 #!python
+#cython: binding=True
 #cython: language_level=3
 #cython: boundscheck=False
 #cython: wraparound=False
-#cython: cdivision=True
+#cython: cdivision=False
 #cython: nonecheck=False
 #cython: initializedcheck=False
 
@@ -10,23 +11,6 @@ cimport cython
 from libc.stdlib cimport free 
 from structures cimport _LinkedListStruct, add
 from board cimport Board
- 
-'''
-    @class:
-        Heuristics
-    @info:
-        provides functions for the calculation of heuristic values
-        whole class 100% C - no GIL
-'''
-    
-'''
-    @args:
-        board memview, source coordinates, depth also number of moves required so far, heuristic board
-    @info:
-        function for Territorial evaluation
-    @return:
-        nothing, but updates the heuristic values in hboard if a field can be reached in less moves than noted
-'''
 
 cdef _LinkedListStruct* getMovesInRadius(short[:,::1] boardx, _LinkedListStruct* ptr ,unsigned short depth, short[:,::1] boardh) nogil:
     cdef:
@@ -113,14 +97,7 @@ cdef _LinkedListStruct* getMovesInRadius(short[:,::1] boardx, _LinkedListStruct*
     ptr.y=yi
     
     return _head
-'''
-    @args:
-        board memview, source coordinates, depth also number of moves required so far, heuristic board
-    @info:
-        function for Territorial evaluation
-    @return:
-        nothing, but updates the heuristic values in hboard if a field can be reached in less moves than noted
-'''
+
 cdef _LinkedListStruct* kgetMovesInRadius(short[:,::1] boardx, _LinkedListStruct* ptr ,unsigned short depth, short[:,::1] boardh) nogil:
     cdef:
         Py_ssize_t lengthb,y, xi,yi
@@ -177,15 +154,7 @@ cdef _LinkedListStruct* kgetMovesInRadius(short[:,::1] boardx, _LinkedListStruct
     ptr.y=yi
     
     return _head
-'''
-    @args:
-        board memview, amazon coordinates, heuristic board
-    @info:
-        function for Territorial evaluation
-    @return:
-        nothing, but updates the heuristic values in hboard if a field can be reached in less moves than noted
-        utilizing BFS 
-'''
+
 cdef void amazonBFS(short [:,::1] board, _LinkedListStruct*s, short[:,::1] hboard) nogil:
     cdef:
         Py_ssize_t x,length,dl
@@ -225,15 +194,7 @@ cdef void amazonBFS(short [:,::1] board, _LinkedListStruct*s, short[:,::1] hboar
         if _head is NULL:
             break
     return
-'''
-    @args:
-        board memview, amazon coordinates, heuristic board
-    @info:
-        function for Territorial evaluation
-    @return:
-        nothing, but updates the heuristic values in hboard if a field can be reached in less moves than noted
-        utilizing BFS 
-'''
+
 cdef void kingBFS(short [:,::1] board, _LinkedListStruct*s, short[:,::1] hboard) nogil:
     cdef:
         Py_ssize_t x,length,dl
@@ -275,14 +236,7 @@ cdef void kingBFS(short [:,::1] board, _LinkedListStruct*s, short[:,::1] hboard)
     return
 
 
-'''
-    @args:
-        board memview, color of player maximizing, #of amazons per side, heuristic board white, heuristic board black
-    @info:
-        function for Territorial evaluation
-    @return:
-        the heuristic value for the maximizing player 
-'''
+
 cdef DTYPE_t territorial_eval_heurisic(short[:,::1]board,short token,unsigned short qn, short[:,:,::1] hboard)nogil:
     cdef:
         Py_ssize_t i,j,d
@@ -334,14 +288,7 @@ cdef DTYPE_t territorial_eval_heurisic(short[:,::1]board,short token,unsigned sh
                         else:
                                 ret -= 1.0
     return ret
-'''
-    @args:
-        board memview, color of player maximizing, #of amazons per side, heuristic board white, heuristic board black
-    @info:
-        function for Territorial evaluation
-    @return:
-        the heuristic value for the maximizing player 
-'''
+
 cdef DTYPE_t territorial_eval_heurisick(short[:,::1]board,short token,unsigned short qn, short[:,:,::1] hboard, unsigned int param)nogil:
     # param = max(1,param)
     cdef:
@@ -352,13 +299,14 @@ cdef DTYPE_t territorial_eval_heurisick(short[:,::1]board,short token,unsigned s
         DTYPE_t c1 = 0.0
         DTYPE_t c2 = 0.0
         DTYPE_t p = param/ (board.shape[0]**2) 
+        DTYPE_t rp = 1-p
         DTYPE_t w1,w2,w3,w4
         _LinkedListStruct* _queenshead =  Board.get_queen_posn(board, pl, qn)
         _LinkedListStruct*_ptr = NULL
     w1 = .7*p
     w2 = .3*p
-    w3 = .3*(1-p)
-    w4 = .7*(1-p)
+    w3 = .7*rp
+    w4 = .3*rp
             
     d = 1
     for i in range(board.shape[0]):
@@ -429,20 +377,14 @@ cdef DTYPE_t territorial_eval_heurisick(short[:,::1]board,short token,unsigned s
                                     retk -= 1.0
                         c1 += (2.0**-hboard[1,i,j])-(2.0**-hboard[0,i,j])
                         c2 += min(1,max(-1, (hboard[2,i,j]-hboard[3,i,j])/6))
-    ret = (w1*ret)+(w2*c1)+(w3*retk)+(w4*c2)
+    
+    ret = (w1*ret)+(w2*c1*2)+(w3*retk)+(w4*c2)
     return ret
 
     #ret = (ret+(retk*p))
 
 
-'''
-    @args:
-        board memview, color of player 1 or 2, # of amazons per side
-    @info:
-        function for mobility evaluation
-    @return:
-        the number of possible moves of player 1 or 2
-'''
+
 cdef DTYPE_t move_count( short[:, ::1] board, unsigned short token, unsigned short qn) nogil:
     cdef:
         Py_ssize_t xi,yi

@@ -1,8 +1,9 @@
 #!python
+#cython: binding=True
 #cython: language_level=3
 #cython: boundscheck=False
 #cython: wraparound=False
-#cython: cdivision=True
+#cython: cdivision=False
 #cython: nonecheck=False
 #cython: initializedcheck=False
 
@@ -106,6 +107,7 @@ cdef short rollout(_MCTS_Node* this, short[:,::1] ops, short[:,::1] board, short
         nothing, but traverses back to the root, updating the nodes and reversing the moves (board) for space effiency
 '''
 cdef void backpropagate(_MCTS_Node* this, short result, short[:,::1] board, npy_bool wturn)nogil:
+    
     this._number_of_visits +=1.0
     if this.wturn == wturn:
         if result == 1:
@@ -117,6 +119,7 @@ cdef void backpropagate(_MCTS_Node* this, short result, short[:,::1] board, npy_
             this.wins+=1.0
         else:
             this.loses+=1.0
+            
     if this.move is not NULL:
         board[this.move.ax,this.move.ay] = 0
         board[this.move.dx,this.move.dy] = 0

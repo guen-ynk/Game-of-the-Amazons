@@ -1,8 +1,9 @@
 #!python
+#cython: binding=True
 #cython: language_level=3
 #cython: boundscheck=False
 #cython: wraparound=False
-#cython: cdivision=True
+#cython: cdivision=False
 #cython: nonecheck=False
 #cython: initializedcheck=False
  
@@ -14,6 +15,7 @@ cdef _LinkedListStruct* add(_LinkedListStruct* _head, Py_ssize_t x, Py_ssize_t y
         while not obj:
             free(obj)
             obj = <_LinkedListStruct*> malloc(sizeof(_LinkedListStruct))
+
         obj.x = x
         obj.y = y
         obj.length = 0
