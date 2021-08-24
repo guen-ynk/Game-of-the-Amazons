@@ -9,8 +9,10 @@
 from numpy cimport npy_bool, float64_t
 import numpy as np
 from libc.time cimport time,time_t
-from structures cimport _LinkedListStruct, add
+from structures cimport _LinkedListStruct, add, _MovesStruct, readlist, readmoves, freelist, freemoves
 from ai cimport get_ai_move
+from board cimport Board
+from newmcts cimport get_amazon_moves, get_amazon_moveslib2rule, get_arrow_moves
 from heuristics cimport move_count, territorial_eval_heurisick
 ctypedef float64_t DTYPE_t
 
@@ -110,17 +112,64 @@ cpdef test_ai4x4():
         )
         short [:,:,::1] hboard = np.full((4,4,4), fill_value=999, dtype=np.short)  
         npy_bool wturn = False
-    print(tostr(np.asarray(field)))
+    print(tostr(np.asarray(field),4))
     get_ai_move(field, 2, wturn, 2, ops, hboard, 3, 100) 
-    print(tostr(np.asarray(field)))
+    print(tostr(np.asarray(field),4))
+
+cpdef test_mctsamazonlibs6x6():
+    #DEBUG NO TEST
+    cdef:
+ 
+        short[:,::1] field = np.array(
+            (
+                (-1,0,0,0,0,0),
+                (-1,0,-1,1,0,0),
+                (-1,2,-1,0,0,0),
+                (-1,-1,-1,2,0,0),
+                (-1,0,0,0,0,0),
+                (1,0,-1,0,0,0)
+            ),
+            dtype=np.short
+
+        )
+        _LinkedListStruct*amazon = NULL
+        _LinkedListStruct*eamazons = NULL
+        _MovesStruct*res = NULL
+        npy_bool wturn = False
+    print(tostr(np.asarray(field),6))
+    amazon = Board.get_queen_posn(field, 1, 2)
+    print("amazons w")
+    readlist(amazon)
+    res = get_amazon_moveslib2rule(field , amazon,2)
+    print("moves w")
+    readmoves(res)
+    freemoves(res)
+
+    amazon = Board.get_queen_posn(field, 2, 2)
+    print("amazons b")
+    readlist(amazon)
+    res = get_amazon_moveslib2rule(field , amazon,2)
+    print("moves b")
+    readmoves(res)
+    freemoves(res)
+    
+    amazon = Board.get_queen_posn(field, 1, 2)
+    eamazons = Board.get_queen_posn(field, 1, 2)
+    print("+++++++++++++++++++++++++")
+    readlist(amazon)
+
+    res = get_arrow_moves(field , amazon, eamazons)
+    print("moves b")
+    readmoves(res)
+    freemoves(res)
 
 
 
 
 
 
-
-def tostr(board):
+def tostr(board,n):
         return "{0}\n{1}".format(("   " + "  ".join([chr(ord("a") + y) for y in range(4)])), "\n".join(
             [(str(x + 1) + ("  " if x < 9 else " ")) + "  ".join(map(lambda x: ['■','·','♛','♕'][x+1], board[x])) for x in
-             range(4 - 1, -1, -1)]))
+             range(n - 1, -1, -1)]))
+

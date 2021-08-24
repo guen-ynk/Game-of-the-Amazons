@@ -46,5 +46,11 @@ cdef  npy_bool inlist(_LinkedListStruct*, _LinkedListStruct* )nogil
 
 cdef void* freelist(_LinkedListStruct* )nogil
 
+cdef void* freemoves(_MovesStruct* )nogil
+
 cdef void* readlist(_LinkedListStruct* )nogil
+
+cdef void* readmoves(_MovesStruct* )nogil
+
+cdef _LinkedListStruct* copyamazons(_LinkedListStruct* )nogil
  

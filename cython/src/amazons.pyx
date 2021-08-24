@@ -99,8 +99,9 @@ cdef class Amazons:
                         rooto = newnode(NULL,self.board.wturn, self.board.qnumber, NULL)
                         amazon = Board.get_queen_posn(self.board.board_view, 1 if self.board.wturn else 2, self.board.qnumber)
                         amazon = filteramazons(amazon, rooto.backtoken, self.board.board_view, ops)
-                        rooto._untried_actions = get_amazon_moves(self.board.board_view, amazon)
-                        best_action_op(rooto,2*self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id, self.ressources)
+                        rooto._untried_actions = get_amazon_moves(self.board.board_view, amazon, False)
+                        best_action_op(rooto,self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id, self.ressources)
+                        rooto = NULL
                     self.board.wturn = not self.board.wturn
                 
                 param-=1 

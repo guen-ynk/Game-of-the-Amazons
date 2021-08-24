@@ -96,6 +96,14 @@ cdef void* freelist(_LinkedListStruct*_head)nogil:
             _ptr = _head.next
             free(_head)
             _head = _ptr
+
+cdef void* freemoves(_MovesStruct*_head)nogil:
+        cdef _MovesStruct*_ptr = NULL
+ 
+        while _head is not NULL:
+            _ptr = _head.next
+            free(_head)
+            _head = _ptr
             
 cdef void* readlist(_LinkedListStruct*_head)nogil:
         cdef _LinkedListStruct*_ptr = NULL
@@ -106,3 +114,25 @@ cdef void* readlist(_LinkedListStruct*_head)nogil:
             with gil:
                 print(_ptr.x, _ptr.y)
             _ptr = _ptr.next
+
+cdef void* readmoves(_MovesStruct* _head)nogil:
+        cdef _MovesStruct*_ptr = NULL
+        _ptr = _head
+        with gil:
+            print("--------------")
+        while _ptr is not NULL:
+            with gil:
+                print(_ptr.sx, _ptr.sy,_ptr.dx, _ptr.dy,_ptr.ax, _ptr.ay,_ptr.length)
+ 
+            _ptr = _ptr.next
+
+cdef _LinkedListStruct* copyamazons(_LinkedListStruct* _head)nogil:
+        cdef _LinkedListStruct*_ptr = NULL
+        cdef _LinkedListStruct*ret = NULL
+        _ptr = _head
+         
+        while _ptr is not NULL:
+            ret = add(ret, _ptr.x, _ptr.y)
+            _ptr = _ptr.next
+        
+        return ret

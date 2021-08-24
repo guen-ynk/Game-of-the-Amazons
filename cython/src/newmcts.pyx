@@ -11,7 +11,7 @@ from libc.time cimport time_t, time
 from libc.math cimport sqrt, log
 from libc.stdlib cimport free, rand, srand
 from numpy cimport npy_bool
-from structures cimport _MCTS_Node, _MovesStruct, newnode, inlist, freelist, push, add
+from structures cimport _MCTS_Node, _MovesStruct, newnode, inlist, freelist, push, add, freemoves, readmoves, copyamazons
 from board cimport Board
 
 '''
@@ -22,7 +22,6 @@ from board cimport Board
     @info:
         100% C - no GIL !
 '''
-
 cdef _LinkedListStruct* get_nopath(short[:, ::1] boardx, _LinkedListStruct*s, short color) nogil: # 100%  optimized
     cdef:
         _LinkedListStruct*head = NULL
@@ -154,20 +153,24 @@ cdef npy_bool prunning(_LinkedListStruct*amazon, short color, short[:,::1] board
     freelist(_set)
 
     return False
+'''
+    Function wich filters the Amazons:
+        IF there are 
 
+'''
 cdef _LinkedListStruct* filteramazons(_LinkedListStruct*amazon, short color, short[:,::1] board, short[:,::1] ops)nogil:
     cdef:
         _LinkedListStruct*future=NULL
         _LinkedListStruct*temp=NULL
-        _LinkedListStruct*betterfuture = NULL
+        _LinkedListStruct*betterfuture = NULL  
         Py_ssize_t x,y
     future = amazon
-    
+
     while future is not NULL:
         x = future.x
         y = future.y
         temp = NULL
-        temp = add(temp, x, y)
+        temp = add(temp, x, y) 
 
         if prunning(temp, color, board, ops):
             betterfuture = add(betterfuture, x, y)
@@ -199,7 +202,7 @@ cdef _LinkedListStruct* get_queen_posn(short[:, ::1] a,short color, unsigned sho
                 if ind==num:
                     return _head
 
-cdef _MovesStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*amazons) nogil: # 100%  optimized
+cdef _MovesStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*amazons, npy_bool flag) nogil:  
     cdef:
         _MovesStruct*head = NULL
         _MovesStruct*lighthead = NULL
@@ -277,19 +280,19 @@ cdef _MovesStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*amaz
                         container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
                     else:
                         break
-        _tmp = amazons
-        amazons = amazons.next
-        free(_tmp)
-        if container is not NULL:
-            if container.length <=2:
-                pointer = container
+        
+        #----------------------------------- container has A moves for ith iteration
+      
+        if container is not NULL:           # Falls was drin ist
+            if container.length <=2:         # Und dies mehr als 2 elems sind  
+                pointer = container         # iterate druch container  1-2-3-Lighthead    
                 while pointer.next is not NULL:
                     pointer = pointer.next
-                pointer.next = lighthead
-                lighthead = container
-                container = NULL
+                pointer.next = lighthead    # hinten anfügen
+                lighthead = container       # maincontainer übverschreiben ( head ) 
+                container = NULL            # container wieder NULL für nächste Iteration
             
-            else:
+            else:                           # 1 oder 2 elems drin sind dasselbe mit dem low container
                 pointer = container
                 while pointer.next is not NULL:
                     pointer = pointer.next
@@ -297,17 +300,187 @@ cdef _MovesStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*amaz
                 head = container
                 container = NULL
 
+        _tmp = amazons
+        amazons = amazons.next
+        free(_tmp)
+
+    if flag:
+        freemoves(head)
+        return lighthead
 
     if lighthead is NULL:
-        
         return head
     else:
-        pointer = head
-        while pointer is not NULL:
-            head = pointer
-            pointer = pointer.next
-            free(head)
+        freemoves(head)
         return lighthead
+        
+cdef _MovesStruct* get_amazon_moveslib2rule(short[:, ::1] boardx, _LinkedListStruct*amazons, unsigned short qnumber) nogil:  
+    cdef:
+        _MovesStruct*head = NULL
+        _MovesStruct*lighthead = NULL
+        _MovesStruct*container = NULL
+        _MovesStruct*pointer = NULL
+        _MovesStruct*_ptr = NULL
+        _MovesStruct*_ptr2 = NULL
+        _MovesStruct*betterfuture = NULL
+        _MovesStruct*restrain = NULL
+        _MovesStruct*secondlayerrestrain = NULL
+        _LinkedListStruct*eamazons = NULL
+        unsigned short token = 2 if 1==boardx[amazons.x,amazons.y] else 1
+        unsigned short tokenown = 1 if token == 2 else 2
+        Py_ssize_t lengthb
+        Py_ssize_t y,xi,yi,xx,yy
+    
+    lengthb = boardx.shape[0]
+    eamazons = Board.get_queen_posn(boardx, token, qnumber)
+    restrain = get_amazon_moves(boardx, eamazons, True) #  hole feindliche amazonen
+    secondlayerrestrain = Board.fast_moves(boardx, tokenown, qnumber)
+    pointer = restrain
+    while pointer is not NULL:
+
+        _ptr = secondlayerrestrain
+        while _ptr is not NULL:
+                                
+            if _ptr.ax == pointer.dx and _ptr.ay == pointer.dy:
+                 
+                betterfuture = push(betterfuture, _ptr.sx,_ptr.sy,_ptr.dx,_ptr.dy,_ptr.sx,_ptr.sy)
+
+            _ptr = _ptr.next
+
+        pointer = pointer.next
+
+    pointer = NULL
+    while amazons is not NULL:
+       
+        xi = amazons.x
+        yi = amazons.y
+
+        xx = amazons.x
+        yy = amazons.y
+        
+    
+        for y in range(xi-1,-1,-1): # hardcode thanks to cython north 
+            if boardx[y,yi]==0:
+                container= push(container, xx, yy,y, yi, xx, yy)
+            else:
+                break
+            
+        for y in range(xi+1,lengthb): # hardcode thanks to cython south
+            if boardx[y,yi]==0:
+                container= push(container, xx, yy, y, yi, xx, yy)
+            else:
+                break
+        
+        for y in range(yi-1,-1,-1): # hardcode thanks to cython left
+            if boardx[xi,y]==0:
+                container= push(container,xx, yy, xi, y, xx, yy)
+            else:
+                break
+            
+        for y in range(yi+1,lengthb): # hardcode thanks to cython  right
+            if boardx[xi,y]==0:
+                container= push(container, xx, yy, xi, y, xx, yy)
+            else:
+                break
+
+        for y in range(1,lengthb): # hardcode thanks to cython  south left
+                    amazons.x-= 1
+                    amazons.y-= 1
+                    if amazons.x>=0 and amazons.y>=0 and boardx[amazons.x,amazons.y]==0:
+                        container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                    else:
+                        break
+                    
+        amazons.x=xi
+        amazons.y=yi
+        for y in range(1,lengthb): # hardcode thanks to cython  south right
+                    amazons.x-= 1
+                    amazons.y+= 1
+                    if amazons.x>=0 and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
+                        container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                    else:
+                        break
+        amazons.x=xi
+        amazons.y=yi
+        for y in range(1,lengthb): # hardcode thanks to cython  north left
+                    amazons.x+= 1
+                    amazons.y-= 1
+                    if amazons.y>=0 and amazons.x<lengthb and boardx[amazons.x,amazons.y]==0:
+                        container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                    else:
+                        break
+        amazons.x=xi
+        amazons.y=yi             
+        for y in range(1,lengthb): # hardcode thanks to cython  north right
+                    amazons.x+= 1
+                    amazons.y+= 1
+                    if amazons.x<lengthb and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
+                        container= push(container, xx, yy,amazons.x, amazons.y, xx, yy)
+                    else:
+                        break
+        
+        #----------------------------------- container has A moves for ith iteration
+        if container is not NULL:           # Falls was drin ist
+
+            if container.length <=2:         # Und dies mehr als 2 elems sind  
+                pointer = container         # iterate druch container  1-2-3-Lighthead    
+                while pointer.next is not NULL:
+                    pointer = pointer.next
+                pointer.next = lighthead    # hinten anfügen
+                lighthead = container       # maincontainer übverschreiben ( head ) 
+                container = NULL            # container wieder NULL für nächste Iteration
+            
+            else:                           # 1 oder 2 elems drin sind dasselbe mit dem low container
+                
+                #-------------------------------------
+                pointer = NULL
+                pointer = restrain
+                while pointer is not NULL:
+
+                    _ptr = container
+
+                    while _ptr is not NULL:
+                        if _ptr.dx == pointer.dx and _ptr.dy == pointer.dy:
+
+                            betterfuture = push(betterfuture, xx,yy,_ptr.dx,_ptr.dy,xx,yy)
+
+                        _ptr = _ptr.next
+                        
+                    pointer = pointer.next
+
+                #-------------------------------------
+                if betterfuture is NULL:
+                    pointer = container
+                    while pointer.next is not NULL:
+                        pointer = pointer.next
+                    pointer.next = head
+                    head = container
+                    container = NULL
+                else:
+                    freemoves(container)
+                    container = NULL
+        
+        _tmp = amazons
+        amazons = amazons.next
+        free(_tmp)
+    
+    freemoves(restrain)
+    freemoves(secondlayerrestrain)
+    if betterfuture is not NULL:
+        if lighthead is NULL:
+            lighthead = betterfuture
+        else:
+            pointer = lighthead
+            while pointer.next is not NULL:
+                pointer = pointer.next
+            pointer.next = betterfuture    # hinten anfügen
+  
+    if lighthead is NULL:
+        return head
+    else:
+        freemoves(head)
+        return lighthead
+
 
 cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazons, _LinkedListStruct*eamazons) nogil: # 100%  optimized
     cdef:
@@ -390,31 +563,22 @@ cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazo
         _tmp = amazons
         amazons = amazons.next
         free(_tmp)
-    restrain = get_amazon_moves(boardx, eamazons)
-    if restrain is not NULL and restrain.length <= 2:
-        while restrain is not NULL:
-            pointer = restrain
-            _ptr = container
-            while _ptr is not NULL:
-                if _ptr.dx == pointer.dx and _ptr.dy == pointer.dy:
-                    betterfuture = push(betterfuture, xx,yy,_ptr.dx,_ptr.dy,xx,yy)
-                _ptr = _ptr.next
-            restrain= restrain.next
-            free(pointer)
-    else:
-        while restrain is not NULL:
-            pointer = restrain
-            restrain= restrain.next
-            free(pointer)
+    restrain = get_amazon_moves(boardx, eamazons, True)
 
+    pointer = restrain
+    while pointer is not NULL:
+        _ptr = container
+        while _ptr is not NULL:
+            if _ptr.dx == pointer.dx and _ptr.dy == pointer.dy:
+                betterfuture = push(betterfuture, xx,yy,_ptr.dx,_ptr.dy,xx,yy)
+            _ptr = _ptr.next
+        pointer = pointer.next
 
+    freemoves(restrain)
     if betterfuture is NULL:
         return container
     else:
-        while container is not NULL:
-            _ptr = container
-            container = container.next
-            free(_ptr)
+        freemoves(container)
         return betterfuture
 '''
     @args:
@@ -424,7 +588,6 @@ cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazo
     @return:
         the next unexpanded child of the calling MCTS node
 '''
-
 cdef _MCTS_Node * expand(_MCTS_Node * this, short[:,::1] board, short[:,::1] ops)nogil:
     cdef _MovesStruct* action = this._untried_actions
     cdef _MCTS_Node * child_node = NULL
@@ -440,7 +603,7 @@ cdef _MCTS_Node * expand(_MCTS_Node * this, short[:,::1] board, short[:,::1] ops
         
         amazon = filteramazons(amazon, child_node.backtoken, board, ops)
         
-        child_node._untried_actions = get_amazon_moves(board, amazon)
+        child_node._untried_actions = get_amazon_moves(board, amazon, False)
         
         if this.children is NULL:
             this.children = child_node
@@ -499,7 +662,7 @@ cdef short rollout(_MCTS_Node * this, short[:,::1] ops, short[:,::1] board, shor
         for jnd in range(length):
             copyb[ind,jnd] = board[ind,jnd]
     
-    if this.move is not NULL and this.move.sx != 99:
+    if this.move is not NULL and this.move.sx != 99: #arrow first 
         
         amazon = add(amazon, this.move.dx, this.move.dy)
 
@@ -508,65 +671,63 @@ cdef short rollout(_MCTS_Node * this, short[:,::1] ops, short[:,::1] board, shor
     
         srand(ts)
         ind = ((rand()+id)%possible_moves.length)+1
-        while possible_moves is not NULL:
+        ptr = possible_moves
+        while ptr is not NULL:
             
-            if possible_moves.length == ind:
-                action = possible_moves
-                possible_moves = possible_moves.next
-            else:
-                ptr = possible_moves
-                possible_moves = possible_moves.next
-                free(ptr)
+            if ptr.length == ind:
+                action = ptr
+            ptr = ptr.next
+           
         
         copyb[action.dx,action.dy] = -1
+        freemoves(possible_moves)
         current_wturn = not current_wturn
         token = 1 if current_wturn else 2
-        free(action)
     
     while not Board.iswon(copyb, token, this.qnumber, ops) :
+        amazon = NULL
         amazon = Board.get_queen_posn(copyb, token, this.qnumber)
-    
         amazon = filteramazons(amazon, 2 if token==1 else 1, copyb, ops)
-    
-        possible_moves = get_amazon_moves(copyb, amazon)
+
+        possible_moves = NULL
+        possible_moves = get_amazon_moves(copyb, amazon, False)
         
         srand(ts)
         ind = ((rand()+id)%possible_moves.length)+1
-        while possible_moves is not NULL:
+
+        ptr = possible_moves
+        while ptr is not NULL:
             
-            if possible_moves.length == ind:
-                action = possible_moves
-                possible_moves = possible_moves.next
-            else:
-                ptr = possible_moves
-                possible_moves = possible_moves.next
-                free(ptr)
+            if ptr.length == ind:
+                action = ptr
+            ptr = ptr.next
+            
 
         copyb[action.dx,action.dy] = token
         copyb[action.sx,action.sy] = 0
+        amazon = NULL
         amazon = add(amazon, action.dx, action.dy)
         amazon.next = NULL
-        free(action)
+        freemoves(possible_moves)
 
         eamazons = Board.get_queen_posn(board, this.token, this.qnumber)
         possible_moves = get_arrow_moves(copyb, amazon, eamazons)
     
         srand(ts)
         ind = ((rand()+id)%possible_moves.length)+1
-        while possible_moves is not NULL:
+        
+        ptr = possible_moves
+        while ptr is not NULL:
             
-            if possible_moves.length == ind:
-                action = possible_moves
-                possible_moves = possible_moves.next
-            else:
-                ptr = possible_moves
-                possible_moves = possible_moves.next
-                free(ptr)
+            if ptr.length == ind:
+                action = ptr
+            ptr = ptr.next
+            
     
         copyb[action.dx,action.dy] = -1
         current_wturn = not current_wturn
         token = 1 if current_wturn else 2
-        free(action)
+        freemoves(possible_moves)
         
     return -1 if current_wturn == wturn else 1
 

@@ -21,7 +21,9 @@ cdef _LinkedListStruct* filteramazons(_LinkedListStruct*, short , short[:,::1] ,
 
 cdef _LinkedListStruct* get_queen_posn(short[:, ::1] ,short , unsigned short ) nogil
 
-cdef _MovesStruct* get_amazon_moves(short[:, ::1] , _LinkedListStruct* ) nogil
+cdef _MovesStruct* get_amazon_moves(short[:, ::1] , _LinkedListStruct* , npy_bool) nogil
+
+cdef _MovesStruct* get_amazon_moveslib2rule(short[:, ::1] , _LinkedListStruct*, unsigned short) nogil
 
 cdef _MovesStruct* get_arrow_moves(short[:, ::1] , _LinkedListStruct* , _LinkedListStruct* ) nogil
 
