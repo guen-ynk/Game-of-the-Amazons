@@ -132,7 +132,10 @@ def main(i,q, times,inputfile,A,B,MCTS, res):
     for k in range(times):    
         field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j+k, res)
         f += int(field.game())
-    q.put(f)
+    FIL = open("newres.txt", "a")
+    FIL.write("white wins: "+str(f)+ "A: "+str(A)+"B: "+str(B)+"MCTS: "+str(MCTS))
+    FIL.close()
+    #q.put(f)
 
 def simulate(times=1,inputfile="10x10",A=0,B=4,MCTS=10000, res=30):
     import time
