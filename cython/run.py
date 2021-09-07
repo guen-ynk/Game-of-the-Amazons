@@ -27,11 +27,11 @@ def main(times=1,inputfile= "10x10",A=3,B=5,MCTS=100000,cores=1):
     print(os.cpu_count(), ": CPU COUNT")
  
     times = 1
-    cores = 1
-    inputfile = "4x4"
-    Alist = [3]
-    Blist = [5]
-    MCTSl = [1000]
+    cores = 20
+    inputfile = "10x10"
+    Alist = [1,3,1,5,4,3,4,5]
+    Blist = [3,1,5,1,3,4,5,4]
+    MCTSl = [40000,40000,40000,40000,40000,40000,40000,40000]
     #Alist = [A]
     #Blist = [B]
     #MCTSl =[MCTS]
