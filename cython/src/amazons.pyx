@@ -129,7 +129,7 @@ def main(i,q, times,inputfile,A,B,MCTS, res):
         field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j+k, res)
         f += int(field.game())
     FIL = open("newres.txt", "a")
-    FIL.write("white wins: "+str(f)+ "A: "+str(A)+"B: "+str(B)+"MCTS: "+str(MCTS))
+    FIL.write("white wins: "+str(f)+ "A: "+str(A)+"B: "+str(B)+"MCTS: "+str(MCTS)+"\n")
     FIL.close()
     #q.put(f)
 
