@@ -43,7 +43,7 @@ ctypedef np.float64_t DTYPE_t
  
 cdef class Amazons:
     cdef: 
-        unsigned short n,white_mode, black_mode
+        unsigned short n
         list white_init, black_init
         public Board board
         public list player
@@ -54,12 +54,8 @@ cdef class Amazons:
     def __init__(self, config="config.txt", A=1,B=1,MCTS=10000, j=1, ressources=20):
         info = open(config, "r")
         self.n = int(info.readline())
-        white = info.readline().split(":")
-        self.white_mode = int(white[0])
-        self.white_init = list(map(alphabet2num, white[1].split()))
-        black = info.readline().split(":")
-        self.black_mode = int(black[0])
-        self.black_init = list(map(alphabet2num, black[1].split()))
+        self.white_init = list(map(alphabet2num, info.readline().split()))
+        self.black_init = list(map(alphabet2num, info.readline().split()))
         self.player = [A,B]
         self.board = Board(self.n, self.white_init, self.black_init)
         self.MCTS = MCTS
