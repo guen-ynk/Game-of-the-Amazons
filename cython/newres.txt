@@ -739,3 +739,16 @@ white wins: 0A: 3B: 4MCTS: 40000
 white wins: 1A: 3B: 4MCTS: 40000
 white wins: 0A: 3B: 4MCTS: 40000
 white wins: 1A: 3B: 4MCTS: 40000
+white wins: 1A: 4B: 5MCTS: 40000
+white wins: 1A: 4B: 5MCTS: 40000
+white wins: 1A: 4B: 5MCTS: 40000
+white wins: 0A: 4B: 5MCTS: 40000
+white wins: 1A: 4B: 5MCTS: 40000
+white wins: 0A: 4B: 5MCTS: 40000
+white wins: 0A: 4B: 5MCTS: 40000
+white wins: 1A: 4B: 5MCTS: 40000
+white wins: 0A: 4B: 5MCTS: 40000
+white wins: 0A: 4B: 5MCTS: 40000
+white wins: 0A: 4B: 5MCTS: 40000
+white wins: 0A: 4B: 5MCTS: 40000
+white wins: 1A: 4B: 5MCTS: 40000
