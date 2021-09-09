@@ -795,3 +795,17 @@ white wins: 1A: 3B: 1MCTS: 60000
 white wins: 1A: 3B: 1MCTS: 60000
 white wins: 1A: 3B: 1MCTS: 60000
 white wins: 1A: 3B: 1MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
+white wins: 0A: 1B: 5MCTS: 60000
