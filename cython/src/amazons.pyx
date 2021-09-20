@@ -73,6 +73,7 @@ cdef class Amazons:
             _MCTS_Node*rooto = NULL
             _LinkedListStruct*amazon = NULL
             unsigned int param = (self.board.size**2)-(2*self.board.qnumber)
+            unsigned int temp = param
         while True:
             for n, x in enumerate(self.player):
                 token = 1 if self.board.wturn else 2
@@ -84,7 +85,11 @@ cdef class Amazons:
                 if not x:
                     player.player(self.board) 
                 elif x==1 or x==2 or x==4:
-                    get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, param, self.ressources)
+                    #if n==0:
+                    get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, temp, self.ressources)
+                    #else:
+                     #   get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, param-temp, self.ressources)
+
                     self.board.wturn = not self.board.wturn
                 else:
                     if x==3:
@@ -100,7 +105,8 @@ cdef class Amazons:
                         rooto = NULL
                     self.board.wturn = not self.board.wturn
                 
-                param-=1 
+                temp=-1
+
     
 '''
         @args:
@@ -133,7 +139,7 @@ def main(i,q, times,inputfile,A,B,MCTS, res):
     FIL.close()
     #q.put(f)
 
-def simulate(times=1,inputfile="10x10",A=0,B=4,MCTS=10000, res=30):
+def simulate(times=1,inputfile="6x6",A=4,B=4,MCTS=10000, res=100000):
     import time
     cdef Amazons field
     stamp = time.time()
