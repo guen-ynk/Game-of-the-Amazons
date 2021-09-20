@@ -73,7 +73,6 @@ cdef class Amazons:
             _MCTS_Node*rooto = NULL
             _LinkedListStruct*amazon = NULL
             unsigned int param = (self.board.size**2)-(2*self.board.qnumber)
-            unsigned int temp = param
         while True:
             for n, x in enumerate(self.player):
                 token = 1 if self.board.wturn else 2
@@ -86,7 +85,8 @@ cdef class Amazons:
                     player.player(self.board) 
                 elif x==1 or x==2 or x==4:
                     #if n==0:
-                    get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, temp, self.ressources)
+                    print(param)
+                    get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, param, self.ressources)
                     #else:
                      #   get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, param-temp, self.ressources)
 
@@ -105,7 +105,7 @@ cdef class Amazons:
                         rooto = NULL
                     self.board.wturn = not self.board.wturn
                 
-                temp=-1
+                param -= 1
 
     
 '''

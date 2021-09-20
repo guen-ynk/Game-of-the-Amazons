@@ -6,6 +6,7 @@
 #cython: cdivision=False
 #cython: nonecheck=False
 #cython: initializedcheck=False
+
 from numpy cimport npy_bool, float64_t
 import numpy as np
 from libc.time cimport time,time_t
@@ -15,7 +16,8 @@ from board cimport Board
 from newmcts cimport get_amazon_moves, get_amazon_moveslib2rule, get_arrow_moves
 from heuristics cimport move_count, territorial_eval_heurisick, territorial_eval_heurisic
 ctypedef float64_t DTYPE_t
-
+import amazons as am
+ 
 #@cytest
 cpdef test_mobeval4x4():
     cdef:
@@ -189,11 +191,53 @@ cpdef test_tereval4x422():
  
     territorial_eval_heurisick(field ,1 ,4 , hboard,6)
     #print(tostr(np.asarray(hboard),10))
+def time_benchmark_mobility():#
+    import time as t
+    #4x4
+    board4 = am.Amazons("../configs/config4x4.txt",4,2,0,1,10000)
+    stamp = t.time()
+    move_count(board4.board.board_view, 1, board4.board.qnumber)
+    print("4x4 4 is white wc: ", t.time()-stamp, " seconds" )
+    #6x6
+    board6 = am.Amazons("../configs/config6x6.txt",4,2,0,1,10000)
+    stamp = t.time()
+    move_count(board6.board.board_view, 1, board6.board.qnumber)
+    print("6x6 4 is white wc: ", t.time()-stamp, " seconds" )
+    #8x8
+    board8 = am.Amazons("../configs/config8x8.txt",4,2,0,1,10000)
+    stamp = t.time()
+    move_count(board8.board.board_view, 1, board8.board.qnumber)
+    print("8x8 4 is white wc: ", t.time()-stamp, " seconds" )
+    #10x10
+    board10 = am.Amazons("../configs/config10x10.txt", 4,2,0,1,10000)
+    stamp = t.time()
+    move_count(board10.board.board_view, 1, board10.board.qnumber)
+    print("10x10 4 is white wc: ", t.time()-stamp, " seconds" )
 
+def time_benchmark_territory():#
+    import time as t
+    #4x4
+    board4 = am.Amazons("../configs/config4x4.txt",4,2,0,1,10000)
+    stamp = t.time()
+    territorial_eval_heurisick(board4.board.board_view ,1 , board4.board.qnumber, np.full((4,4,4), fill_value=999, dtype=np.short)  ,6)
 
-
-
-
+    print("4x4 4 is white wc: ", t.time()-stamp, " seconds" )
+    #6x6
+    board6 = am.Amazons("../configs/config6x6.txt",4,2,0,1,10000)
+    stamp = t.time()
+    territorial_eval_heurisick(board6.board.board_view ,1 , board6.board.qnumber, np.full((4,6,6), fill_value=999, dtype=np.short)  ,6)
+    print("6x6 4 is white wc: ", t.time()-stamp, " seconds" )
+    #8x8
+    board8 = am.Amazons("../configs/config8x8.txt",4,2,0,1,10000)
+    stamp = t.time()
+    territorial_eval_heurisick(board8.board.board_view ,1 , board8.board.qnumber, np.full((4,8,8), fill_value=999, dtype=np.short)  ,6)
+    print("8x8 4 is white wc: ", t.time()-stamp, " seconds" )
+    #10x10
+    board10 = am.Amazons("../configs/config10x10.txt", 4,2,0,1,10000)
+    stamp = t.time()
+    territorial_eval_heurisick(board10.board.board_view ,1 , board10.board.qnumber, np.full((4,10,10), fill_value=999, dtype=np.short)  ,6)
+    print("10x10 4 is white wc: ", t.time()-stamp, " seconds" )
+    
 def tostr(board,n):
         return "{0}\n{1}".format(("   " + "  ".join([chr(ord("a") + y) for y in range(4)])), "\n".join(
             [(str(x + 1) + ("  " if x < 9 else " ")) + "  ".join(map(lambda x: ['■','·','♛','♕'][x+1], board[x])) for x in
