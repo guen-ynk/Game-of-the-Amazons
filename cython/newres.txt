@@ -607,3 +607,4 @@ white wins: 2A: 3B: 5MCTS: 1000
 white wins: 1A: 3B: 5MCTS: 1000
 white wins: 1A: 3B: 5MCTS: 1000
 white wins: 3A: 3B: 5MCTS: 1000
+white wins: 1A: 2B: 4MCTS: 40000
