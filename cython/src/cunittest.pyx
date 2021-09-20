@@ -13,7 +13,7 @@ from structures cimport _LinkedListStruct, add, _MovesStruct, readlist, readmove
 from ai cimport get_ai_move
 from board cimport Board
 from newmcts cimport get_amazon_moves, get_amazon_moveslib2rule, get_arrow_moves
-from heuristics cimport move_count, territorial_eval_heurisick
+from heuristics cimport move_count, territorial_eval_heurisick, territorial_eval_heurisic
 ctypedef float64_t DTYPE_t
 
 #@cytest
@@ -163,6 +163,32 @@ cpdef test_mctsamazonlibs6x6():
     readmoves(res)
     freemoves(res)
 
+cpdef test_tereval4x422():
+    cdef:
+        short [:,:,::1] hboard = np.full((4,10,10), fill_value=999, dtype=np.short)  
+
+        short[:,::1] field = np.array(
+            (
+                (0 ,0 ,-1,0 , 0, 0, 0, 0, 0, 0),
+                (-1,-1,-1,0 , 0, 0, 0, 0, 0, 0),
+                (0 ,1 ,-1,-1,-1, 0,-1,-1,-1, 0),
+                (0 ,0 ,-1,0 , 0,-1, 2, 1, 0, 0),
+                (-1,2 ,-1,0 , 1,-1,-1,-1, 0, 0),
+
+                (0 ,0 ,-1,0 , 0, 0,-1, 0, 0, 0),
+                (0 ,0 ,-1,2 , 0,-1, 0, 0, 0,-1),
+                (0 ,0 ,-1,0 , 0,-1, 0, 0, 0, 0),
+                (0 ,0 ,-1,0 ,-1,-1, 0,-1, 1, 0),
+                (0 ,0 ,-1,0 ,-1, 0, 0,-1, 0, 2)
+          
+                 
+            ),
+            dtype=np.short
+
+        )
+ 
+    territorial_eval_heurisick(field ,1 ,4 , hboard,6)
+    #print(tostr(np.asarray(hboard),10))
 
 
 

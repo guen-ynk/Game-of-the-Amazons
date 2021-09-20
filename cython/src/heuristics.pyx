@@ -303,11 +303,11 @@ cdef DTYPE_t territorial_eval_heurisick(short[:,::1]board,short token,unsigned s
         DTYPE_t w1,w2,w3,w4
         _LinkedListStruct* _queenshead =  Board.get_queen_posn(board, pl, qn)
         _LinkedListStruct*_ptr = NULL
-    w1 = .7*p
-    w2 = .3*p
-    w3 = .7*rp
-    w4 = .3*rp
-            
+    w1 = .7*rp
+    w2 = .3*rp
+    w3 = .7*p
+    w4 = .3*p
+                
     d = 1
     for i in range(board.shape[0]):
         for j in range(board.shape[0]):
