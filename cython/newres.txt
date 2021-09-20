@@ -1,1 +1,2 @@
 
+white wins: 1A: 2B: 4MCTS: 40000
