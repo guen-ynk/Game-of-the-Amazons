@@ -6,3 +6,4 @@ white wins: 0A: 2B: 4MCTS: 40000
 white wins: 0A: 2B: 4MCTS: 40000
 white wins: 0A: 2B: 4MCTS: 40000
 white wins: 0A: 2B: 4MCTS: 40000
+white wins: 0A: 2B: 4MCTS: 40000
