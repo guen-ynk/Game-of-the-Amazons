@@ -134,9 +134,8 @@ def main(i,q, times,inputfile,A,B,MCTS, res):
         
         f += int(field.game())
     FIL = open("newres.txt", "a")
-    FIL.write("white wins: "+str(f)+ "A: "+str(A)+"B: "+str(B)+"MCTS: "+str(MCTS)+"\n")
+    FIL.write("white wins: "+str(f)+ "A: "+str(A)+"B: "+str(B)+"MCTS: "+str(MCTS) + "time in s: "+str(res)+"\n")
     FIL.close()
-    #q.put(f)
 
 def simulate(times=1,inputfile="6x6",A=4,B=4,MCTS=10000, res=100000):
     import time
