@@ -1,7 +1,18 @@
-white wins: 1A: 2B: 4MCTS: 1
-white wins: 1A: 4B: 2MCTS: 1
-white wins: 0A: 2B: 4MCTS: 1
-white wins: 1A: 4B: 2MCTS: 1
-white wins: 0A: 2B: 4MCTS: 1
-white wins: 1A: 4B: 2MCTS: 1
-white wins: 0A: 2B: 4MCTS: 1
+white wins: 0A: 2B: 4MCTS: 0time in s: 1
+white wins: 0A: 2B: 4MCTS: 2time in s: 2
+white wins: 1A: 4B: 2MCTS: 1time in s: 1
+white wins: 0A: 2B: 4MCTS: 4time in s: 3
+white wins: 1A: 4B: 2MCTS: 3time in s: 2
+white wins: 1A: 4B: 2MCTS: 5time in s: 3
+white wins: 0A: 2B: 4MCTS: 6time in s: 4
+white wins: 0A: 2B: 4MCTS: 8time in s: 5
+white wins: 1A: 4B: 2MCTS: 7time in s: 4
+white wins: 1A: 4B: 2MCTS: 9time in s: 5
+white wins: 1A: 4B: 2MCTS: 1time in s: 1
+white wins: 0A: 2B: 4MCTS: 0time in s: 1
+white wins: 1A: 4B: 2MCTS: 3time in s: 2
+white wins: 0A: 2B: 4MCTS: 2time in s: 2
+white wins: 0A: 2B: 4MCTS: 4time in s: 3
+white wins: 1A: 4B: 2MCTS: 5time in s: 3
+white wins: 0A: 2B: 4MCTS: 6time in s: 4
+white wins: 1A: 4B: 2MCTS: 7time in s: 4
