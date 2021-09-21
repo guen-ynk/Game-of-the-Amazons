@@ -73,6 +73,7 @@ cdef class Amazons:
             _MCTS_Node*rooto = NULL
             _LinkedListStruct*amazon = NULL
             unsigned int param = (self.board.size**2)-(2*self.board.qnumber)
+
         while True:
             for n, x in enumerate(self.player):
                 token = 1 if self.board.wturn else 2
@@ -84,12 +85,9 @@ cdef class Amazons:
                 if not x:
                     player.player(self.board) 
                 elif x==1 or x==2 or x==4:
-                    #if n==0:
-                    print(param)
+                   
                     get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, param, self.ressources)
-                    #else:
-                     #   get_ai_move(self.board.board_view, x, self.board.wturn, self.board.qnumber, ops, hboard, param-temp, self.ressources)
-
+                 
                     self.board.wturn = not self.board.wturn
                 else:
                     if x==3:
@@ -133,6 +131,7 @@ def main(i,q, times,inputfile,A,B,MCTS, res):
     cdef int k 
     for k in range(times):    
         field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j+k, res)
+        
         f += int(field.game())
     FIL = open("newres.txt", "a")
     FIL.write("white wins: "+str(f)+ "A: "+str(A)+"B: "+str(B)+"MCTS: "+str(MCTS)+"\n")

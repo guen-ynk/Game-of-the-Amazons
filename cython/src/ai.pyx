@@ -28,7 +28,7 @@ cdef void get_ai_move(short[:, ::1] board, int mode, npy_bool wturn, unsigned sh
         _MovesStruct*_ptr = NULL
         _MovesStruct*_best_move = NULL
         _MovesStruct*_head = Board.fast_moves(board, token, qnumber)
-        unsigned short depth = 2 if _head.length > 50 else 8
+        unsigned short depth = 2 if param > 10 else 6
 
     while _head is not NULL:
         timestamp = time(NULL)

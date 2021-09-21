@@ -29,10 +29,10 @@ def main(times=1,inputfile= "10x10",A=3,B=5,MCTS=100000,cores=1):
     times = 1
     cores = 1
     inputfile = "10x10"
-    Filelist = ["4x4","4x4","6x6","6x6","8x8","8x8","10x10","10x10"]
-    Alist = [2,4,2,4,2,4,2,4]
-    Blist = [4,2,4,2,4,2,4,2]
-    MCTSl = [40000,40000,40000,40000,40000,40000,40000,40000]
+    Filelist = ["8x8"]
+    Alist = [2]
+    Blist = [4]
+    MCTSl = [40000]
     #Alist = [A]
     #Blist = [B]
     #MCTSl =[MCTS]
