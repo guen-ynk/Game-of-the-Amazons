@@ -26,10 +26,10 @@ def main():
     times = 1
     cores = 1
     inputfile = "10x10"
-    Alist = [2,4,2,4,2,4,2,4,2,4,2,4]
-    Blist = [4,2,4,2,4,2,4,2,4,2,4,2]
-    MCTSl = [0,1,2,3,4,5,6,7,8,9,10,11]
-    Timel = [5,5,10,10,20,20,40,40,60,60]
+    Alist = [2,4,   2,4,    2,4,    2,4,    2,4]
+    Blist = [4,2,   4,2,    4,2,    4,2,    4,2]
+    MCTSl = [0,1,   2,3,    4,5,    6,7,    8,9]
+    Timel = [5,5,   10,10,  20,20,  40,40,  60,60]
     processes =[]
     q = multiprocessing.Queue()
     for x in range(len(Alist)):
