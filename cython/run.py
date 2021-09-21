@@ -27,21 +27,18 @@ def main(times=1,inputfile= "10x10",A=3,B=5,MCTS=100000,cores=1):
     print(os.cpu_count(), ": CPU COUNT")
  
     times = 1
-    cores = 1
+    cores = 15
     inputfile = "10x10"
-    Filelist = ["8x8"]
-    Alist = [2]
-    Blist = [4]
-    MCTSl = [40000]
-    #Alist = [A]
-    #Blist = [B]
-    #MCTSl =[MCTS]
+    Alist = [2,3,4,3,2,5,4,5]
+    Blist = [3,2,3,4,5,2,5,4]
+    #MCTSl = [40000]
+    MCTS = 1000
     for x in range(len(Alist)):
         processes =[]
         q = multiprocessing.Queue()
         stamp = time.time()
         for i in range(cores):
-            p = multiprocessing.Process(target=amazons.main,args=(i,q,times,Filelist[x],Alist[x],Blist[x],MCTSl[x], 3000)) 
+            p = multiprocessing.Process(target=amazons.main,args=(i, q, times, inputfile, Alist[x], Blist[x], MCTS, 1000)) 
             p.start()
             processes.append(p)
         for p in processes:
