@@ -58,3 +58,17 @@ white wins: 0A: 3B: 4MCTS: 1000time in s: 1000INDEX: 12
 white wins: 0A: 3B: 4MCTS: 1000time in s: 1000INDEX: 10
 white wins: 0A: 3B: 4MCTS: 1000time in s: 1000INDEX: 7
 white wins: 0A: 3B: 4MCTS: 1000time in s: 1000INDEX: 11
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 8
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 5
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 11
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 7
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 4
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 2
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 6
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 9
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 10
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 13
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 1
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 12
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 14
+white wins: 0A: 2B: 5MCTS: 1000time in s: 1000INDEX: 0
