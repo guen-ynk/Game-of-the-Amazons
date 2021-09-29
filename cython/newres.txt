@@ -2223,3 +2223,6 @@ white wins: 0A: 5B: 3MCTS: 900001time in s: 20INDEX: 0
 white wins: 1A: 5B: 3MCTS: 900001time in s: 20INDEX: 1
 white wins: 1A: 5B: 3MCTS: 900001time in s: 20INDEX: 0
 white wins: 1A: 5B: 3MCTS: 900001time in s: 20INDEX: 1
+------------------------------------------------------------------
+
+--	--	--	--	--	--		--	--	--	--	--	--	--	
