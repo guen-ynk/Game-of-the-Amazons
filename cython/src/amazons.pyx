@@ -134,19 +134,10 @@ def main(i,q, times,inputfile,A,B,MCTS, res):
         field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j+k, res) 
         f += int(field.game())
   
-    try:
-        sqliteConnection = sqlite3.connect('results.db')
-        cursor = sqliteConnection.cursor()
-        sql_update_query = """Update RESULTS set GAMES = GAMES+1, WINS = WINS +"""+ str(f) +""" where TIMER= """+ str(res)+ """ AND A_METHOD= """+str(A)+""" AND B_METHOD="""+str(B) 
-        cursor.execute(sql_update_query)
-        sqliteConnection.commit()
-        cursor.close()
+    FIL = open("stableres.txt", "a")
+    FIL.write("wins:"+str(f)+ " A:"+str(A)+" B:"+str(B)+" MCTS:"+str(MCTS) + " time:"+str(res) +"\n")
+    FIL.close()
 
-    except sqlite3.Error as error:
-        print("Failed to update sqlite table", error)
-    finally:
-        if sqliteConnection:
-            sqliteConnection.close()
 
 def simulate(times=1,inputfile="6x6",A=4,B=4,MCTS=10000, res=100000):
     import time
