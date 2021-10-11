@@ -582,7 +582,7 @@ cdef _MCTS_Node * expand(_MCTS_Node * this, short[:,::1] board, short[:,::1] ops
         child_node = newnode(action, this.wturn,this.qnumber, this)##ERRR
         amazon = Board.get_queen_posn(board, child_node.token, this.qnumber)
         
-        #amazon = filteramazons(amazon, child_node.backtoken, board, ops)
+        amazon = filteramazons(amazon, child_node.backtoken, board, ops)
         
         child_node._untried_actions = get_amazon_moveslib2rule(board, amazon, this.qnumber)
         
@@ -660,7 +660,7 @@ cdef short rollout(_MCTS_Node * this, short[:,::1] ops, short[:,::1] board, shor
     while not Board.iswon(copyb, token, this.qnumber, ops) :
         amazon = NULL
         amazon = Board.get_queen_posn(copyb, token, this.qnumber)
-        #amazon = filteramazons(amazon, 2 if token==1 else 1, copyb, ops)
+        amazon = filteramazons(amazon, 2 if token==1 else 1, copyb, ops)
 
         possible_moves = NULL
         possible_moves = get_amazon_moveslib2rule(copyb, amazon, this.qnumber)
