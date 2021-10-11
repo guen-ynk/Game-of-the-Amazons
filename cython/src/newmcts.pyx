@@ -702,7 +702,7 @@ cdef short rollout(_MCTS_Node * this, short[:,::1] ops, short[:,::1] board, shor
         token = 1 if current_wturn else 2
         freemoves(possible_moves)
         
-    return -1 if current_wturn == wturn else 1
+    return 1 if current_wturn == wturn else -1
 
 
 
@@ -719,7 +719,8 @@ cdef void backpropagate(_MCTS_Node * this, short result, short[:,::1] board, npy
             this.wins+=1.0
         else:
             this.loses+=1.0
-        
+    with gil:
+        print(np.asarray(board))
     if this.parent is not NULL:
         if this.move.sx == 99:
             board[this.move.dx, this.move.dy] = 0
@@ -735,7 +736,7 @@ cdef DTYPE_t calculateUCB(DTYPE_t winsown, DTYPE_t countown, DTYPE_t winschild, 
     cdef:
         DTYPE_t ratio_kid = winschild/countchild # eval
         DTYPE_t visits_log = log(countown)
-        DTYPE_t vrtl = 0.314159 # C
+        DTYPE_t vrtl = 0.25 # C
         DTYPE_t wurzel = sqrt((visits_log/countchild) * min(vrtl,(ratio_kid-(ratio_kid*ratio_kid))+sqrt(2*visits_log/countchild)) )
         #DTYPE_t wurzel = vrtl*sqrt(visits_log/countchild)
     return (ratio_kid + wurzel)
@@ -824,7 +825,7 @@ cdef void best_action_op(_MCTS_Node  * this, unsigned long  simulation_no, DTYPE
             break
 
     #debugt(this, 0)
-
+    
     v = best_child(this, c_param)
     best =  v.move
     board[best.dx, best.dy] = this.token
