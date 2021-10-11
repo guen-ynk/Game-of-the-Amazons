@@ -701,7 +701,7 @@ cdef short rollout(_MCTS_Node * this, short[:,::1] ops, short[:,::1] board, shor
         current_wturn = not current_wturn
         token = 1 if current_wturn else 2
         freemoves(possible_moves)
-        
+      
     return -1 if current_wturn == wturn else 1
 
 
@@ -740,9 +740,6 @@ cdef DTYPE_t calculateUCB(DTYPE_t winsown, DTYPE_t countown, DTYPE_t winschild, 
         DTYPE_t wurzel = sqrt((visits_log/countchild) * min(vrtl,(ratio_kid-(ratio_kid*ratio_kid))+sqrt(2*visits_log/countchild)) )
         #DTYPE_t wurzel = vrtl*sqrt(visits_log/countchild)
     return (ratio_kid + wurzel)
-
-
-
 
 cdef _MCTS_Node * best_child(_MCTS_Node * this, DTYPE_t c_param)nogil:
     cdef:
@@ -863,6 +860,7 @@ cdef void freetree(_MCTS_Node *root)nogil:
 
 
 cdef void debugt(_MCTS_Node *root, short depth)nogil:
+
     cdef _MCTS_Node *children = root.children
     cdef _MCTS_Node *child = NULL
     with gil:
@@ -875,3 +873,5 @@ cdef void debugt(_MCTS_Node *root, short depth)nogil:
         child = children
         children = children.next
         debugt(child, depth+1)
+
+ 
