@@ -4,8 +4,13 @@ import sqlite3
 
 def main():
     #Connecting to sqlite
-    conn = sqlite3.connect('results.db')
+    conn = sqlite3.connect('results.db',isolation_level=None)
+    # Set journal mode to WAL.
+    conn.execute('pragma journal_mode=wal')
     cursor = conn.cursor()
+
+ 
+    
 
     #Doping RESULTS table if already exists.
     cursor.execute("DROP TABLE IF EXISTS RESULTS")
