@@ -735,9 +735,9 @@ cdef DTYPE_t calculateUCB(DTYPE_t winsown, DTYPE_t countown, DTYPE_t winschild, 
     cdef:
         DTYPE_t ratio_kid = winschild/countchild # eval
         DTYPE_t visits_log = log(countown)
-        DTYPE_t vrtl = 0.6 # C
-        #DTYPE_t wurzel = sqrt((visits_log/countchild) * min(vrtl,(ratio_kid-(ratio_kid*ratio_kid))+sqrt(2*visits_log/countchild)) )
-        DTYPE_t wurzel = vrtl*sqrt(visits_log/countchild)
+        DTYPE_t vrtl = 0.314159 # C
+        DTYPE_t wurzel = sqrt((visits_log/countchild) * min(vrtl,(ratio_kid-(ratio_kid*ratio_kid))+sqrt(2*visits_log/countchild)) )
+        #DTYPE_t wurzel = vrtl*sqrt(visits_log/countchild)
     return (ratio_kid + wurzel)
 
 
