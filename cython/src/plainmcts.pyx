@@ -235,7 +235,7 @@ cdef void best_action(_MCTS_Node * this, unsigned long  simulation_no, DTYPE_t c
         ressources -= (time(NULL) - timestamp)
         if ressources <= 0:
             break  
-
+    
     v = best_child(this, c_param)
     
     best =  v.move

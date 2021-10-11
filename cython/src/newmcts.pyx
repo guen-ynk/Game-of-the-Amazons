@@ -14,15 +14,9 @@ from numpy cimport npy_bool
 from structures cimport _MCTS_Node, _MovesStruct, newnode, inlist, freelist, push, add, freemoves, readmoves, copyamazons
 from board cimport Board
 
-'''
-    @args:
-        board memview,  coordinates of amazon
-    @return:
-        list of the amazon coordinates of the reachable fields
-    @info:
-        100% C - no GIL !
-'''
-cdef _LinkedListStruct* get_nopath(short[:, ::1] boardx, _LinkedListStruct*s, short color) nogil: # 100%  optimized
+cimport numpy as np
+import numpy as np
+cdef _LinkedListStruct* get_nopath(short[:, ::1] boardx, _LinkedListStruct*s, short color) nogil:
     cdef:
         _LinkedListStruct*head = NULL
         Py_ssize_t lengthb
@@ -93,7 +87,6 @@ cdef _LinkedListStruct* get_nopath(short[:, ::1] boardx, _LinkedListStruct*s, sh
     s.x=xi
     s.y=yi
     return  head
-
 cdef npy_bool prunning(_LinkedListStruct*amazon, short color, short[:,::1] board, short[:,::1] ops)nogil:
     cdef:
         _LinkedListStruct*_ptr = NULL
@@ -107,7 +100,7 @@ cdef npy_bool prunning(_LinkedListStruct*amazon, short color, short[:,::1] board
     
     opsl = 8
     leng = board.shape[0]
-    
+    # searches all directions for free fields
     for x in range(opsl):
         amazon.x+=ops[x,0]
         amazon.y+=ops[x,1]
@@ -118,16 +111,16 @@ cdef npy_bool prunning(_LinkedListStruct*amazon, short color, short[:,::1] board
                     break
         amazon.x-=ops[x,0]
         amazon.y-=ops[x,1]
-    
+    # if noone found
     if not flag:
         free(amazon)
         return False
 
     while amazon is not NULL:
-
+        # get path into all directions from amazon
         _paths = get_nopath(board, amazon, color)
         while _paths is not NULL:
-        
+            # enemy is in path -> also in territory -> not isolated at all -> return True
             if board[_paths.x, _paths.y] != 0:
             
                 freelist(_set)
@@ -135,7 +128,7 @@ cdef npy_bool prunning(_LinkedListStruct*amazon, short color, short[:,::1] board
                 freelist(_paths)
                 
                 return True
-        
+            # no duplicate fields e.g. no cyclic analysis of paths
             if not inlist(_set, _paths):
                 x = _paths.x
                 y = _paths.y 
@@ -153,11 +146,7 @@ cdef npy_bool prunning(_LinkedListStruct*amazon, short color, short[:,::1] board
     freelist(_set)
 
     return False
-'''
-    Function wich filters the Amazons:
-        IF there are 
 
-'''
 cdef _LinkedListStruct* filteramazons(_LinkedListStruct*amazon, short color, short[:,::1] board, short[:,::1] ops)nogil:
     cdef:
         _LinkedListStruct*future=NULL
@@ -166,26 +155,25 @@ cdef _LinkedListStruct* filteramazons(_LinkedListStruct*amazon, short color, sho
         Py_ssize_t x,y
     future = amazon
 
+     # if not isolated, add into return List of Amazons
     while future is not NULL:
         x = future.x
         y = future.y
         temp = NULL
         temp = add(temp, x, y) 
-
+       
         if prunning(temp, color, board, ops):
             betterfuture = add(betterfuture, x, y)
 
         future = future.next
         
     if betterfuture is not NULL:
-        
         freelist(amazon)
-        
         return betterfuture
+
     else:
-    
         return amazon
- 
+
 cdef _LinkedListStruct* get_queen_posn(short[:, ::1] a,short color, unsigned short num) nogil:
     cdef:
         unsigned short ind = 0
@@ -221,31 +209,31 @@ cdef _MovesStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*amaz
         yy = amazons.y
         
     
-        for y in range(xi-1,-1,-1): # hardcode thanks to cython north 
+        for y in range(xi-1,-1,-1): 
             if boardx[y,yi]==0:
                 container= push(container, xx, yy,y, yi, xx, yy)
             else:
                 break
             
-        for y in range(xi+1,lengthb): # hardcode thanks to cython south
+        for y in range(xi+1,lengthb): 
             if boardx[y,yi]==0:
                 container= push(container, xx, yy, y, yi, xx, yy)
             else:
                 break
         
-        for y in range(yi-1,-1,-1): # hardcode thanks to cython left
+        for y in range(yi-1,-1,-1): 
             if boardx[xi,y]==0:
                 container= push(container,xx, yy, xi, y, xx, yy)
             else:
                 break
             
-        for y in range(yi+1,lengthb): # hardcode thanks to cython  right
+        for y in range(yi+1,lengthb): 
             if boardx[xi,y]==0:
                 container= push(container, xx, yy, xi, y, xx, yy)
             else:
                 break
 
-        for y in range(1,lengthb): # hardcode thanks to cython  south left
+        for y in range(1,lengthb): 
                     amazons.x-= 1
                     amazons.y-= 1
                     if amazons.x>=0 and amazons.y>=0 and boardx[amazons.x,amazons.y]==0:
@@ -255,7 +243,7 @@ cdef _MovesStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*amaz
                     
         amazons.x=xi
         amazons.y=yi
-        for y in range(1,lengthb): # hardcode thanks to cython  south right
+        for y in range(1,lengthb): 
                     amazons.x-= 1
                     amazons.y+= 1
                     if amazons.x>=0 and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
@@ -264,7 +252,7 @@ cdef _MovesStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*amaz
                         break
         amazons.x=xi
         amazons.y=yi
-        for y in range(1,lengthb): # hardcode thanks to cython  north left
+        for y in range(1,lengthb):
                     amazons.x+= 1
                     amazons.y-= 1
                     if amazons.y>=0 and amazons.x<lengthb and boardx[amazons.x,amazons.y]==0:
@@ -273,7 +261,7 @@ cdef _MovesStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*amaz
                         break
         amazons.x=xi
         amazons.y=yi             
-        for y in range(1,lengthb): # hardcode thanks to cython  north right
+        for y in range(1,lengthb): 
                     amazons.x+= 1
                     amazons.y+= 1
                     if amazons.x<lengthb and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
@@ -359,31 +347,31 @@ cdef _MovesStruct* get_amazon_moveslib2rule(short[:, ::1] boardx, _LinkedListStr
         yy = amazons.y
         
     
-        for y in range(xi-1,-1,-1): # hardcode thanks to cython north 
+        for y in range(xi-1,-1,-1): 
             if boardx[y,yi]==0:
                 container= push(container, xx, yy,y, yi, xx, yy)
             else:
                 break
             
-        for y in range(xi+1,lengthb): # hardcode thanks to cython south
+        for y in range(xi+1,lengthb): 
             if boardx[y,yi]==0:
                 container= push(container, xx, yy, y, yi, xx, yy)
             else:
                 break
         
-        for y in range(yi-1,-1,-1): # hardcode thanks to cython left
+        for y in range(yi-1,-1,-1): 
             if boardx[xi,y]==0:
                 container= push(container,xx, yy, xi, y, xx, yy)
             else:
                 break
             
-        for y in range(yi+1,lengthb): # hardcode thanks to cython  right
+        for y in range(yi+1,lengthb): 
             if boardx[xi,y]==0:
                 container= push(container, xx, yy, xi, y, xx, yy)
             else:
                 break
 
-        for y in range(1,lengthb): # hardcode thanks to cython  south left
+        for y in range(1,lengthb): 
                     amazons.x-= 1
                     amazons.y-= 1
                     if amazons.x>=0 and amazons.y>=0 and boardx[amazons.x,amazons.y]==0:
@@ -393,7 +381,7 @@ cdef _MovesStruct* get_amazon_moveslib2rule(short[:, ::1] boardx, _LinkedListStr
                     
         amazons.x=xi
         amazons.y=yi
-        for y in range(1,lengthb): # hardcode thanks to cython  south right
+        for y in range(1,lengthb): 
                     amazons.x-= 1
                     amazons.y+= 1
                     if amazons.x>=0 and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
@@ -402,7 +390,7 @@ cdef _MovesStruct* get_amazon_moveslib2rule(short[:, ::1] boardx, _LinkedListStr
                         break
         amazons.x=xi
         amazons.y=yi
-        for y in range(1,lengthb): # hardcode thanks to cython  north left
+        for y in range(1,lengthb):
                     amazons.x+= 1
                     amazons.y-= 1
                     if amazons.y>=0 and amazons.x<lengthb and boardx[amazons.x,amazons.y]==0:
@@ -411,7 +399,7 @@ cdef _MovesStruct* get_amazon_moveslib2rule(short[:, ::1] boardx, _LinkedListStr
                         break
         amazons.x=xi
         amazons.y=yi             
-        for y in range(1,lengthb): # hardcode thanks to cython  north right
+        for y in range(1,lengthb): 
                     amazons.x+= 1
                     amazons.y+= 1
                     if amazons.x<lengthb and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
@@ -501,31 +489,31 @@ cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazo
         yi = amazons.y
         
     
-        for y in range(xi-1,-1,-1): # hardcode thanks to cython north 
+        for y in range(xi-1,-1,-1): 
             if boardx[y,yi]==0:
                 container= push(container, xx, yy,y, yi, xx, yy)
             else:
                 break
             
-        for y in range(xi+1,lengthb): # hardcode thanks to cython south
+        for y in range(xi+1,lengthb): 
             if boardx[y,yi]==0:
                 container= push(container, xx, yy, y, yi, xx, yy)
             else:
                 break
         
-        for y in range(yi-1,-1,-1): # hardcode thanks to cython left
+        for y in range(yi-1,-1,-1): 
             if boardx[xi,y]==0:
                 container= push(container,xx, yy, xi, y, xx, yy)
             else:
                 break
             
-        for y in range(yi+1,lengthb): # hardcode thanks to cython  right
+        for y in range(yi+1,lengthb): 
             if boardx[xi,y]==0:
                 container= push(container, xx, yy, xi, y, xx, yy)
             else:
                 break
 
-        for y in range(1,lengthb): # hardcode thanks to cython  south left
+        for y in range(1,lengthb): 
                     amazons.x-= 1
                     amazons.y-= 1
                     if amazons.x>=0 and amazons.y>=0 and boardx[amazons.x,amazons.y]==0:
@@ -535,7 +523,7 @@ cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazo
                     
         amazons.x=xi
         amazons.y=yi
-        for y in range(1,lengthb): # hardcode thanks to cython  south right
+        for y in range(1,lengthb): 
                     amazons.x-= 1
                     amazons.y+= 1
                     if amazons.x>=0 and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
@@ -544,7 +532,7 @@ cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazo
                         break
         amazons.x=xi
         amazons.y=yi
-        for y in range(1,lengthb): # hardcode thanks to cython  north left
+        for y in range(1,lengthb):
                     amazons.x+= 1
                     amazons.y-= 1
                     if amazons.y>=0 and amazons.x<lengthb and boardx[amazons.x,amazons.y]==0:
@@ -553,7 +541,7 @@ cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazo
                         break
         amazons.x=xi
         amazons.y=yi             
-        for y in range(1,lengthb): # hardcode thanks to cython  north right
+        for y in range(1,lengthb): 
                     amazons.x+= 1
                     amazons.y+= 1
                     if amazons.x<lengthb and amazons.y<lengthb and boardx[amazons.x,amazons.y]==0:
@@ -580,14 +568,7 @@ cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazo
     else:
         freemoves(container)
         return betterfuture
-'''
-    @args:
-        calling MCTS node, board memview
-    @info:
-        function for MCTS
-    @return:
-        the next unexpanded child of the calling MCTS node
-'''
+
 cdef _MCTS_Node * expand(_MCTS_Node * this, short[:,::1] board, short[:,::1] ops)nogil:
     cdef _MovesStruct* action = this._untried_actions
     cdef _MCTS_Node * child_node = NULL
@@ -635,14 +616,6 @@ cdef _MCTS_Node * expand(_MCTS_Node * this, short[:,::1] board, short[:,::1] ops
 
         return child_node 
 
-'''
-    @args:
-        calling MCTS node, operations memview, board memview, copyboard memview, iteration+threadid for better seeding
-    @info:
-        function for MCTS
-    @return:
-        1 if the calling node wins the Rollout else -1
-'''
 
 cdef short rollout(_MCTS_Node * this, short[:,::1] ops, short[:,::1] board, short[:,::1] copyb, int id, npy_bool wturn)nogil:
     cdef:
@@ -731,14 +704,7 @@ cdef short rollout(_MCTS_Node * this, short[:,::1] ops, short[:,::1] board, shor
         
     return -1 if current_wturn == wturn else 1
 
-'''
-    @args:
-        calling MCTS node, result of the rollout ,board memview
-    @info:
-        function for MCTS
-    @return:
-        nothing, but traverses back to the root, updating the nodes and reversing the moves (board) for space effiency
-'''
+
 
 cdef void backpropagate(_MCTS_Node * this, short result, short[:,::1] board, npy_bool wturn)nogil:
     
@@ -763,35 +729,19 @@ cdef void backpropagate(_MCTS_Node * this, short result, short[:,::1] board, npy
         backpropagate(this.parent, result, board, wturn)
     return
 
-'''
-    @args:
-        parent wins, parent visits, child wins, child visits
-    @info:
-        function for MCTS
-    @return:
-        the UCB1 value for a child node : see paper []
-    @note:
-        could try a diffrent formula
-'''
+
  
 cdef DTYPE_t calculateUCB(DTYPE_t winsown, DTYPE_t countown, DTYPE_t winschild, DTYPE_t countchild ) nogil:
     cdef:
         DTYPE_t ratio_kid = winschild/countchild # eval
         DTYPE_t visits_log = log(countown)
-        DTYPE_t vrtl = 0.25 # C
-        DTYPE_t wurzel = sqrt((visits_log/countchild) * min(vrtl,(ratio_kid-(ratio_kid*ratio_kid))+sqrt(2*visits_log/countchild)) )
-        #DTYPE_t wurzel = vrtl*sqrt(visits_log/countchild)
+        DTYPE_t vrtl = 0.2 # C
+        #DTYPE_t wurzel = sqrt((visits_log/countchild) * min(vrtl,(ratio_kid-(ratio_kid*ratio_kid))+sqrt(2*visits_log/countchild)) )
+        DTYPE_t wurzel = vrtl*sqrt(visits_log/countchild)
     return (ratio_kid + wurzel)
 
 
-'''
-    @args:
-        calling MCTS node as parent, param ( not important for this UCB1 score but can be used for future versions including an exploration bonus)
-    @info:
-        function for MCTS
-    @return:
-        the best child node
-'''
+
 
 cdef _MCTS_Node * best_child(_MCTS_Node * this, DTYPE_t c_param)nogil:
     cdef:
@@ -818,14 +768,7 @@ cdef _MCTS_Node * best_child(_MCTS_Node * this, DTYPE_t c_param)nogil:
 
     return best
 
-'''
-    @args:
-        calling MCTS node, param ( not important also see best_child()), operations memview, board memview
-    @info:
-        function for MCTS
-    @return:
-        the next node for the rollout 
-'''
+
 
 cdef _MCTS_Node * tree_policy(_MCTS_Node * this, DTYPE_t c_param, short[:,::1] ops, short[:,::1] board)nogil:
     cdef:
@@ -845,20 +788,14 @@ cdef _MCTS_Node * tree_policy(_MCTS_Node * this, DTYPE_t c_param, short[:,::1] o
             else:
                 board[current_node.move.dx, current_node.move.dy] = current_node.backtoken
                 board[current_node.move.sx, current_node.move.sy] = 0 
+                
     
         if  current_node.move.sx == 99 and Board.iswon(board, current_node.token, current_node.qnumber, ops):
             return current_node
 
 
 
-'''
-    @args:
-        calling MCTS node, how many games per turn, param ( not important also see best_child()), operations memview, board memview, boardcopy memview
-    @info:
-        function for MCTS - ENTRANCE
-    @return:
-        nothing but performs the best move according to the MCTS on the original board
-'''
+
 
 cdef void best_action_op(_MCTS_Node  * this, unsigned long  simulation_no, DTYPE_t c_param, short[:,::1]ops, short[:,::1] board, short[:,::1] copyb, int id, time_t ressources)nogil:        
     cdef:
@@ -867,6 +804,7 @@ cdef void best_action_op(_MCTS_Node  * this, unsigned long  simulation_no, DTYPE
         _MCTS_Node *v = NULL
         _MovesStruct* best = NULL
         time_t timestamp
+    
 
     if Board.iswon(board, this.backtoken, this.qnumber, ops):
         board[this._untried_actions.dx, this._untried_actions.dy] = this.token
@@ -874,6 +812,7 @@ cdef void best_action_op(_MCTS_Node  * this, unsigned long  simulation_no, DTYPE
         return
     
     for i in range(simulation_no):
+        
         timestamp = time(NULL)
         v = tree_policy(this, c_param, ops, board)
         
@@ -883,7 +822,6 @@ cdef void best_action_op(_MCTS_Node  * this, unsigned long  simulation_no, DTYPE
         ressources -= (time(NULL) - timestamp)
         if ressources <= 0:
             break
-
 
     #debugt(this, 0)
 
@@ -899,16 +837,7 @@ cdef void best_action_op(_MCTS_Node  * this, unsigned long  simulation_no, DTYPE
     freetree(this)
     return
 
-'''
-    @args:
-        calling MCTS node
-    @info:
-        function for MCTS - utility
-    @return:
-        nothing but frees the Tree structure 
-    @note:
-        so far no leaks found via valgrind but they are still possible !
-'''
+
 
 cdef void freetree(_MCTS_Node *root)nogil:
     cdef _MCTS_Node *children = root.children
@@ -927,6 +856,7 @@ cdef void freetree(_MCTS_Node *root)nogil:
         free(tmp)
     if root.move is not NULL:
         free(root.move)
+
     free(root)
 
 

@@ -30,6 +30,7 @@ import player
 from structures cimport _LinkedListStruct, _MCTS_Node, newnode
 from board cimport Board
 import board  
+import sqlite3
 import numpy as np
 cimport numpy as np
 from plainmcts cimport best_action
@@ -99,7 +100,7 @@ cdef class Amazons:
                         amazon = Board.get_queen_posn(self.board.board_view, 1 if self.board.wturn else 2, self.board.qnumber)
                         amazon = filteramazons(amazon, rooto.backtoken, self.board.board_view, ops)
                         rooto._untried_actions = get_amazon_moves(self.board.board_view, amazon, False)
-                        best_action_op(rooto,int(round(self.MCTS*1.5)), 0.1,ops,self.board.board_view, copyboard, self.id, self.ressources)
+                        best_action_op(rooto,self.MCTS, 0.1,ops,self.board.board_view, copyboard, self.id, self.ressources)
                         rooto = NULL
                     self.board.wturn = not self.board.wturn
                 
@@ -130,12 +131,22 @@ def main(i,q, times,inputfile,A,B,MCTS, res):
     cdef int f = 0
     cdef int k 
     for k in range(times):    
-        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j+k, res)
-        
+        field = Amazons("../configs/config"+inputfile+".txt",A,B,MCTS,j+k, res) 
         f += int(field.game())
-    FIL = open("newres.txt", "a")
-    FIL.write("white wins: "+str(f)+ "A: "+str(A)+"B: "+str(B)+"MCTS: "+str(MCTS) + "time in s: "+str(res) + "INDEX: "+str(k) + "\n")
-    FIL.close()
+  
+    try:
+        sqliteConnection = sqlite3.connect('results.db')
+        cursor = sqliteConnection.cursor()
+        sql_update_query = """Update RESULTS set GAMES = GAMES+1, WINS = WINS +"""+ str(f) +""" where TIMER= """+ str(res)+ """ AND A_METHOD= """+str(A)+""" AND B_METHOD="""+str(B) 
+        cursor.execute(sql_update_query)
+        sqliteConnection.commit()
+        cursor.close()
+
+    except sqlite3.Error as error:
+        print("Failed to update sqlite table", error)
+    finally:
+        if sqliteConnection:
+            sqliteConnection.close()
 
 def simulate(times=1,inputfile="6x6",A=4,B=4,MCTS=10000, res=100000):
     import time
