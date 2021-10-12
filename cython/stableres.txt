@@ -720,3 +720,9 @@ wins:0 A:5 B:4 MCTS:999999 time:20
 wins:0 A:5 B:4 MCTS:999999 time:20
 wins:1 A:5 B:4 MCTS:999999 time:20
 wins:0 A:5 B:4 MCTS:999999 time:30
+wins:0 A:5 B:4 MCTS:999999 time:30
+wins:0 A:5 B:4 MCTS:999999 time:30
+wins:0 A:5 B:4 MCTS:999999 time:20
+wins:0 A:5 B:4 MCTS:999999 time:30
+wins:0 A:5 B:4 MCTS:999999 time:20
+wins:1 A:5 B:4 MCTS:999999 time:20
