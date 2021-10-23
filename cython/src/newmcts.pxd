@@ -75,7 +75,7 @@ cdef _MovesStruct* get_amazon_moves(short[:, ::1] , _LinkedListStruct* , npy_boo
 '''
 cdef _MovesStruct* get_amazon_moveslib2rule(short[:, ::1] , _LinkedListStruct*, unsigned short) nogil
 
-
+# compute Arrowmoves including librules
 cdef _MovesStruct* get_arrow_moves(short[:, ::1] , _LinkedListStruct* , _LinkedListStruct* ) nogil
 
 cdef _MCTS_Node * expand(_MCTS_Node * , short[:,::1] , short[:,::1] )nogil

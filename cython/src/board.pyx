@@ -6,22 +6,7 @@
 #cython: cdivision=False
 #cython: nonecheck=False
 #cython: initializedcheck=False
-
-'''
-    @Class: 
-        Board 
-    @constructor args: 
-        size : board size n
-        white_init :  transformed coordinates of white amazons vice versa for black
-
-    @class variables:
-        wturn       :   its whites turn
-        size        :   board size n
-        qnumber     :   count of amazons per side
-        board       :   game board -> 0=free    1= white    2=black     -1=Arrow/burned
-        board_view  :   Memview representation of board for perforance, see cython documentation 
-
-'''
+# @Guen Yanik
 
 cimport cython
 from libc.stdlib cimport free 
@@ -44,14 +29,7 @@ cdef class Board:
         self.board[tuple(zip(*black_init))] = 2       
         self.board_view = self.board
 
-    '''
-        @args:
-            board memview,  player color 1 or 2, #amazons 
-        @return:
-            list of the amazon coordinates of the respective color
-        @info:
-            100% C - no GIL !
-    '''
+    
     @staticmethod 
     cdef _LinkedListStruct* get_queen_posn(short[:, ::1] a,short color, unsigned short num) nogil:
         cdef:
@@ -68,14 +46,7 @@ cdef class Board:
                     if ind==num:
                         return _head
                         
-    '''
-        @args:
-            board memview,  coordinates of amazon
-        @return:
-            list of the amazon coordinates of the reachable fields
-        @info:
-            100% C - no GIL !
-    '''
+    
     @staticmethod
     cdef _LinkedListStruct* get_amazon_moves(short[:, ::1] boardx, _LinkedListStruct*s) nogil: # 100%  optimized
         cdef:
@@ -149,14 +120,7 @@ cdef class Board:
         s.y=yi
         return  head
 
-    '''
-        @args:
-            board memview,  player color 1 or 2, #amazons 
-        @return:
-            list of the possible moves for the player of the respective color
-        @info:
-            100% C - no GIL !
-    '''
+    
     @staticmethod
     cdef _MovesStruct* fast_moves(short[:, ::1] board, unsigned short token, unsigned short qn) nogil:
         cdef:
@@ -263,14 +227,6 @@ cdef class Board:
         
         return _top
 
-    '''
-        @args:
-            board memview,  player color 1 or 2, #amazons, operations memview 
-        @return:
-            returns True if color has lost else False
-        @info:
-            100% C - no GIL !
-    '''
     @staticmethod
     cdef npy_bool iswon(short[:, ::1] board ,short token, unsigned short qn, short [:,::1] ops)nogil:
 

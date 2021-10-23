@@ -6,7 +6,7 @@
 #cython: cdivision=False
 #cython: nonecheck=False
 #cython: initializedcheck=False
-
+# @Guen Yanik, 2021
 cimport cython
 from libc.stdlib cimport free 
 from structures cimport _LinkedListStruct, add

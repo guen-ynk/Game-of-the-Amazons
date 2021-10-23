@@ -6,7 +6,7 @@
 #cython: cdivision=False
 #cython: nonecheck=False
 #cython: initializedcheck=False
-
+# @Guen Yanik, 2021
 
 from structures cimport _LinkedListStruct, add
 from numpy cimport float64_t

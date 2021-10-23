@@ -7,7 +7,7 @@
 #$ -t 1-10
 
 source ~/amazons/bin/activate
-python run.py
+python ../run.py
 
 
 

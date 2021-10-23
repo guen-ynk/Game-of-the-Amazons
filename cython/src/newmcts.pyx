@@ -14,8 +14,6 @@ from numpy cimport npy_bool
 from structures cimport _MCTS_Node, _MovesStruct, newnode, inlist, freelist, push, add, freemoves, readmoves, copyamazons
 from board cimport Board
 
-cimport numpy as np
-import numpy as np
 cdef _LinkedListStruct* get_nopath(short[:, ::1] boardx, _LinkedListStruct*s, short color) nogil:
     cdef:
         _LinkedListStruct*head = NULL
@@ -551,8 +549,10 @@ cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazo
         _tmp = amazons
         amazons = amazons.next
         free(_tmp)
+    # get enemy Amazons that can be enclosed in one 1 or 2 turns
     restrain = get_amazon_moves(boardx, eamazons, True)
 
+    # find union of container and restrain
     pointer = restrain
     while pointer is not NULL:
         _ptr = container
@@ -563,58 +563,56 @@ cdef _MovesStruct* get_arrow_moves(short[:, ::1] boardx, _LinkedListStruct*amazo
         pointer = pointer.next
 
     freemoves(restrain)
+    # No pruning possible
     if betterfuture is NULL:
         return container
+    # target found
     else:
         freemoves(container)
         return betterfuture
 
 cdef _MCTS_Node * expand(_MCTS_Node * this, short[:,::1] board, short[:,::1] ops)nogil:
-    cdef _MovesStruct* action = this._untried_actions
-    cdef _MCTS_Node * child_node = NULL
-    cdef _LinkedListStruct*amazon = NULL
-    cdef _LinkedListStruct*eamazons = NULL
+    cdef:
+         _MovesStruct* action = this._untried_actions
+         _MCTS_Node * child_node = NULL
+         _LinkedListStruct*amazon = NULL
+         _LinkedListStruct*eamazons = NULL
     this._untried_actions = this._untried_actions.next
     
+    # Arrow Move
     if action.sx == 99:
         
         board[action.dx, action.dy] = -1
-        child_node = newnode(action, this.wturn,this.qnumber, this)##ERRR
+
+        child_node = newnode(action, this.wturn, this.qnumber, this)
         amazon = Board.get_queen_posn(board, child_node.token, this.qnumber)
-        
         amazon = filteramazons(amazon, child_node.backtoken, board, ops)
-        
         child_node._untried_actions = get_amazon_moveslib2rule(board, amazon, this.qnumber)
-        
-        if this.children is NULL:
-            this.children = child_node
-            this.children.num = 1
-        else:
-            child_node.next = this.children
-            this.children = child_node 
-            this.children.num = this.children.next.num + 1
-        
-        return child_node 
+
+    # Amazon Move  
     else:
         
         board[action.dx, action.dy] = this.token
         board[action.sx, action.sy] = 0 
-        child_node = newnode(action, not this.wturn,this.qnumber, this)##ERRR
+
+        child_node = newnode(action, not this.wturn,this.qnumber, this)
         amazon = add(amazon, action.dx, action.dy)
         amazon.next = NULL
         eamazons = Board.get_queen_posn(board, this.token, this.qnumber)
         child_node._untried_actions = get_arrow_moves(board, amazon, eamazons)
 
-        if this.children is NULL:
-            this.children = child_node
-            this.children.num = 1
-        else:
-            child_node.next = this.children
-            this.children = child_node 
-            this.children.num = this.children.next.num + 1
+
+    # push into children
+    if this.children is NULL:
+        this.children = child_node
+        this.children.num = 1
+    else:
+        child_node.next = this.children
+        this.children = child_node 
+        this.children.num = this.children.next.num + 1
 
 
-        return child_node 
+    return child_node 
 
 
 cdef short rollout(_MCTS_Node * this, short[:,::1] ops, short[:,::1] board, short[:,::1] copyb, int id, npy_bool wturn)nogil:
@@ -721,11 +719,14 @@ cdef void backpropagate(_MCTS_Node * this, short result, short[:,::1] board, npy
             this.loses+=1.0
    
     if this.parent is not NULL:
+        # Arrow move taken back
         if this.move.sx == 99:
             board[this.move.dx, this.move.dy] = 0
+        # Amazon move taken back
         else:
             board[this.move.dx, this.move.dy] = 0
             board[this.move.sx, this.move.sy] = this.backtoken
+
         backpropagate(this.parent, result, board, wturn)
    
     return
@@ -781,13 +782,15 @@ cdef _MCTS_Node * tree_policy(_MCTS_Node * this, DTYPE_t c_param, short[:,::1] o
             
             current_node = best_child(current_node, c_param)
             
-            if current_node.move.sx == 99:
+            # Arrow Moves have (s)ource = 99 
+            if current_node.move.sx == 99: 
                 board[current_node.move.dx, current_node.move.dy] = -1
+            # Rest are Amazon moves
             else:
                 board[current_node.move.dx, current_node.move.dy] = current_node.backtoken
                 board[current_node.move.sx, current_node.move.sy] = 0 
                 
-    
+        # Exit condition: Games is finished by Arrowmove
         if  current_node.move.sx == 99 and Board.iswon(board, current_node.token, current_node.qnumber, ops):
             return current_node
 

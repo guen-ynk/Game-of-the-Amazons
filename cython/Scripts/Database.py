@@ -147,16 +147,21 @@ def updateSqliteTable():
     try:
         sqliteConnection = sqlite3.connect('results.db')
         cursor = sqliteConnection.cursor()
+        info = open("../Data/stableres.txt", "r")
+
+        for ga in info.readlines():
+
+            game = ga.split()
+            win = game[0].split(':')[1]
+            timer = game[4].split(':')[1]
+            A = game[1].split(':')[1]
+            B = game[2].split(':')[1]
         
-        A = 1
-        B = 5
-        timess = 5
-        win = 1
 
-        sql_update_query = """Update RESULTS set GAMES = GAMES+1, WINS = WINS +"""+ str(win) +""" where TIMER= """+ str(timess)+ """ AND A_METHOD= """+str(A)+""" AND B_METHOD="""+str(B) 
+            sql_update_query = """Update RESULTS set GAMES = GAMES+1, WINS = WINS +"""+ win + """ where TIMER= """+ timer + """ AND A_METHOD= """+ A +""" AND B_METHOD="""+B 
 
-        cursor.execute(sql_update_query)
-        sqliteConnection.commit()
+            cursor.execute(sql_update_query)
+            sqliteConnection.commit()
         
         cursor.close()
 
@@ -167,5 +172,6 @@ def updateSqliteTable():
             sqliteConnection.close()
             print("The SQLite connection is closed")
 
-#updateSqliteTable()
-main()
+
+main() # comment if table already exists and data is to add only
+updateSqliteTable() # update: feed stableres.txt results into database
